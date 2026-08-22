@@ -9,6 +9,7 @@ from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession, require_permission
+from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.models.administration import (
     HomepageSection,
@@ -46,6 +47,7 @@ from app.services.audit import add_audit_log
 from app.services.auth import revoke_all_user_sessions
 from app.services.notifications import (
     campaign_delivery_summary,
+    deliver_campaign_push,
     disable_user_push_tokens,
     push_provider_status,
 )
@@ -598,9 +600,12 @@ async def send_notification_campaign(
     )
     await db.commit()
     if sent.status == "queued":
-        from app.workers.celery_app import deliver_campaign_push_task
+        if get_settings().NOTIFICATION_DELIVERY_MODE == "inline":
+            await deliver_campaign_push(db, campaign_id=sent.id)
+        else:
+            from app.workers.celery_app import deliver_campaign_push_task
 
-        deliver_campaign_push_task.delay(str(sent.id))
+            deliver_campaign_push_task.delay(str(sent.id))
     return success(campaign_data(sent))
 
 

@@ -38,3 +38,24 @@ async def test_bootstrap_creates_and_resets_superuser_without_async_lazy_load(
         assert {role.name for role in user.roles} == {"super_admin"}
         assert verify_password("second-secure-password", user.password_hash)
         assert await db.get(Wallet, user.id) is not None
+
+
+async def test_bootstrap_once_keeps_existing_password(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = SimpleNamespace(
+        FIRST_SUPERUSER_EMAIL="free-owner@drovixa.example",
+        FIRST_SUPERUSER_PASSWORD="first-secure-password",
+        FIRST_SUPERUSER_NAME="Drovixa Owner",
+    )
+    monkeypatch.setattr(bootstrap_superuser, "get_settings", lambda: settings)
+
+    await bootstrap_superuser.bootstrap(reset_existing_password=False)
+    settings.FIRST_SUPERUSER_PASSWORD = "a-different-render-secret"
+    await bootstrap_superuser.bootstrap(reset_existing_password=False)
+
+    async with SessionFactory() as db:
+        user = await db.scalar(select(User).where(User.email == settings.FIRST_SUPERUSER_EMAIL))
+        assert user is not None
+        assert verify_password("first-secure-password", user.password_hash)
+        assert not verify_password("a-different-render-secret", user.password_hash)

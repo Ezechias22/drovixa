@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
@@ -8,8 +10,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.notifications.base import PushMessage, PushResult
+from app.models.administration import NotificationCampaign
+from app.models.base import utcnow
 from app.models.notifications import NotificationDelivery, PushToken
-from app.services.notifications import deliver_campaign_push
+from app.services.notifications import (
+    deliver_campaign_push,
+    dispatch_due_notification_campaigns,
+)
 
 
 class SuccessfulPushProvider:
@@ -134,3 +141,86 @@ async def test_admin_campaign_creates_and_delivers_firebase_rows(
     assert deliveries.status_code == 200
     assert deliveries.json()["data"]["status"] == "sent"
     assert deliveries.json()["data"]["deliveries"][0]["count"] == 1
+
+
+async def test_admin_campaign_can_deliver_inline_without_celery_worker(
+    client: AsyncClient,
+    registered: dict[str, object],
+    admin_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = {"Authorization": f"Bearer {registered['access_token']}"}
+    token = await client.post(
+        "/api/v1/push-tokens",
+        headers=headers,
+        json={
+            "provider": "fcm",
+            "platform": "android",
+            "token": "fcm-inline-token-that-is-long-enough-123456789",
+        },
+    )
+    assert token.status_code == 201, token.text
+
+    campaign = await client.post(
+        "/api/v1/admin/notification-campaigns",
+        headers=admin_headers,
+        json={
+            "name": "Render free inline test",
+            "type": "system",
+            "title": "Drovixa free staging",
+            "body": "Inline Firebase delivery works without Celery.",
+            "audience": {"segment": "all"},
+            "channels": ["in_app", "push"],
+        },
+    )
+    assert campaign.status_code == 201, campaign.text
+    campaign_id = campaign.json()["data"]["id"]
+
+    monkeypatch.setattr(
+        "app.routes.admin_operations.get_settings",
+        lambda: SimpleNamespace(NOTIFICATION_DELIVERY_MODE="inline"),
+    )
+    monkeypatch.setattr(
+        "app.services.notifications.get_push_provider",
+        lambda *_: SuccessfulPushProvider(),
+    )
+    sent = await client.post(
+        f"/api/v1/admin/notification-campaigns/{campaign_id}/send",
+        headers=admin_headers,
+        json={"send_now": True},
+    )
+
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["data"]["status"] == "sent"
+
+
+async def test_free_staging_poll_dispatches_due_scheduled_campaign(
+    client: AsyncClient,
+    db: AsyncSession,
+    admin_headers: dict[str, str],
+) -> None:
+    campaign = await client.post(
+        "/api/v1/admin/notification-campaigns",
+        headers=admin_headers,
+        json={
+            "name": "Render free scheduled test",
+            "type": "system",
+            "title": "Scheduled Drovixa notice",
+            "body": "The API polling fallback dispatches this campaign.",
+            "scheduled_at": (utcnow() + timedelta(hours=1)).isoformat(),
+            "audience": {"segment": "all"},
+            "channels": ["in_app"],
+        },
+    )
+    assert campaign.status_code == 201, campaign.text
+    campaign_id = UUID(campaign.json()["data"]["id"])
+    row = await db.get(NotificationCampaign, campaign_id)
+    assert row is not None
+    row.scheduled_at = utcnow() - timedelta(seconds=1)
+    await db.commit()
+
+    dispatched = await dispatch_due_notification_campaigns(db)
+    await db.refresh(row)
+
+    assert dispatched == 1
+    assert row.status == "sent"

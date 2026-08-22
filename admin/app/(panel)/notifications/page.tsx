@@ -28,6 +28,8 @@ type ProviderStatus = {
   project_id?: string | null;
   dry_run: boolean;
   batch_size: number;
+  delivery_mode: 'queue' | 'inline';
+  scheduled_polling_enabled: boolean;
 };
 
 const optionalUrl = z.union([z.literal(''), z.string().url()]);
@@ -123,13 +125,20 @@ export default function NotificationsPage() {
         <StatCard color={provider.data?.configured ? '#22c55e' : '#f59e0b'}
           detail={provider.data?.configured ? `Project ${provider.data.project_id}` : 'In-app delivery remains available'}
           label="Firebase Cloud Messaging" value={provider.data?.configured ? 'Ready' : 'Setup needed'} />
-        <StatCard color="#8b5cf6" detail="Firebase Admin multicast safety limit"
-          label="Push batch size" value={provider.data?.batch_size ?? 500} />
+        <StatCard color="#8b5cf6"
+          detail={provider.data?.delivery_mode === 'inline'
+            ? 'Free staging: the API sends push without a separate worker'
+            : 'Celery worker queue delivery'}
+          label="Push delivery" value={provider.data?.delivery_mode ?? 'queue'} />
         <StatCard color="#ff3d71" detail="Queued and processing campaigns" label="Active deliveries"
           value={query.data?.filter((item) => ['queued', 'processing'].includes(item.status)).length ?? 0} />
         <StatCard color="#38bdf8" detail="Completed without delivery failures" label="Sent campaigns"
           value={query.data?.filter((item) => item.status === 'sent').length ?? 0} />
       </div>
+      {provider.data?.delivery_mode === 'inline' ? <div className="notice" style={{ marginBottom: 18 }}>
+        Free staging mode is active. Immediate push works without a background worker. Scheduled
+        campaigns are checked while the API is awake and can be delayed after Render spins it down.
+      </div> : null}
       <section className="content-grid" style={{ alignItems: 'start' }}>
         <article className="panel">
           <div className="panel-header"><div><h3>Campaign history</h3><p>Draft, scheduled, queued, partial and sent campaigns</p></div></div>

@@ -16,7 +16,7 @@ from app.models.user import User
 from app.repositories.users import get_role_by_name, get_user_by_email
 
 
-async def bootstrap() -> None:
+async def bootstrap(*, reset_existing_password: bool = True) -> None:
     settings = get_settings()
     if not settings.FIRST_SUPERUSER_EMAIL or not settings.FIRST_SUPERUSER_PASSWORD:
         raise RuntimeError("FIRST_SUPERUSER_EMAIL and FIRST_SUPERUSER_PASSWORD are required")
@@ -48,11 +48,12 @@ async def bootstrap() -> None:
         )
         if role_link is None:
             await db.execute(insert(user_roles).values(user_id=user.id, role_id=role.id))
-        user.password_hash = hash_password(settings.FIRST_SUPERUSER_PASSWORD)
         user.status = UserStatus.ACTIVE
         user.deleted_at = None
         user.email_verified = True
-        if not created:
+        if created or reset_existing_password:
+            user.password_hash = hash_password(settings.FIRST_SUPERUSER_PASSWORD)
+        if not created and reset_existing_password:
             now = utcnow()
             await db.execute(
                 update(UserSession)
@@ -79,7 +80,7 @@ async def bootstrap() -> None:
                 .values(active=False, disabled_at=now)
             )
         await db.commit()
-        action = "created" if created else "reset"
+        action = "created" if created else ("reset" if reset_existing_password else "verified")
         print(f"Super administrator {action}: {email}")
 
 

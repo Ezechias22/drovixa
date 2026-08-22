@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     FIREBASE_SERVICE_ACCOUNT_JSON_B64: str | None = None
     FIREBASE_DRY_RUN: bool = False
     PUSH_BATCH_SIZE: int = Field(default=500, ge=1, le=500)
+    NOTIFICATION_DELIVERY_MODE: Literal["queue", "inline"] = "queue"
+    SCHEDULED_NOTIFICATION_POLLING_ENABLED: bool = False
+    SCHEDULED_NOTIFICATION_POLL_INTERVAL_SECONDS: int = Field(default=60, ge=30, le=3600)
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Any
 
 from fastapi import FastAPI
@@ -28,13 +30,40 @@ from app.schemas.common import success
 settings = get_settings()
 configure_logging(settings.LOG_LEVEL)
 configure_observability(settings)
+logger = logging.getLogger(__name__)
+
+
+async def _poll_scheduled_notifications() -> None:
+    from app.core.database import SessionFactory
+    from app.services.notifications import dispatch_due_notification_campaigns
+
+    while True:
+        try:
+            async with SessionFactory() as db:
+                dispatched = await dispatch_due_notification_campaigns(db)
+            if dispatched:
+                logger.info("Dispatched %s scheduled notification campaign(s)", dispatched)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Scheduled notification polling failed")
+        await asyncio.sleep(settings.SCHEDULED_NOTIFICATION_POLL_INTERVAL_SECONDS)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    yield
-    await close_redis()
-    await dispose_database()
+    polling_task: asyncio.Task[None] | None = None
+    if settings.SCHEDULED_NOTIFICATION_POLLING_ENABLED:
+        polling_task = asyncio.create_task(_poll_scheduled_notifications())
+    try:
+        yield
+    finally:
+        if polling_task is not None:
+            polling_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await polling_task
+        await close_redis()
+        await dispose_database()
 
 
 def create_app() -> FastAPI:

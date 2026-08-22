@@ -42,6 +42,10 @@ ignore_missing_imports = true
 module = ["sentry_sdk", "sentry_sdk.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["firebase_admin", "firebase_admin.*"]
+ignore_missing_imports = true
+
 [tool.coverage.run]
 branch = true
 source = ["app"]

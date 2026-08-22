@@ -35,26 +35,13 @@ def ping() -> str:
 
 async def _dispatch_scheduled() -> int:
     from app.core.database import SessionFactory, dispose_database
-    from app.services.administration import (
-        dispatch_notification_campaign,
-        scheduled_campaign_ids,
-    )
+    from app.services.notifications import dispatch_due_notification_campaigns
 
-    dispatched = 0
     try:
         async with SessionFactory() as db:
-            campaign_ids = await scheduled_campaign_ids(db)
-        for campaign_id in campaign_ids:
-            async with SessionFactory() as db:
-                campaign = await dispatch_notification_campaign(db, campaign_id=campaign_id)
-                if campaign.status == "queued":
-                    from app.services.notifications import deliver_campaign_push
-
-                    await deliver_campaign_push(db, campaign_id=campaign_id)
-                dispatched += 1
+            return await dispatch_due_notification_campaigns(db)
     finally:
         await dispose_database()
-    return dispatched
 
 
 @celery_app.task(name="notifications.dispatch_scheduled")  # type: ignore[untyped-decorator]

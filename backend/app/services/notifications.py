@@ -54,6 +54,8 @@ def push_provider_status() -> dict[str, Any]:
         "project_id": settings.FIREBASE_PROJECT_ID if configured else None,
         "dry_run": settings.FIREBASE_DRY_RUN,
         "batch_size": settings.PUSH_BATCH_SIZE,
+        "delivery_mode": settings.NOTIFICATION_DELIVERY_MODE,
+        "scheduled_polling_enabled": settings.SCHEDULED_NOTIFICATION_POLLING_ENABLED,
     }
 
 
@@ -302,6 +304,26 @@ async def campaign_delivery_summary(db: AsyncSession, *, campaign_id: UUID) -> d
             for channel, provider, status, count in rows
         ],
     }
+
+
+async def dispatch_due_notification_campaigns(db: AsyncSession) -> int:
+    """Dispatch due campaigns without requiring a separate queue worker.
+
+    This is intended for low-volume staging deployments. The normal production
+    path remains Celery worker + Beat.
+    """
+    from app.services.administration import (
+        dispatch_notification_campaign,
+        scheduled_campaign_ids,
+    )
+
+    dispatched = 0
+    for campaign_id in await scheduled_campaign_ids(db):
+        campaign = await dispatch_notification_campaign(db, campaign_id=campaign_id)
+        if campaign.status == "queued":
+            await deliver_campaign_push(db, campaign_id=campaign_id)
+        dispatched += 1
+    return dispatched
 
 
 async def disable_user_push_tokens(
