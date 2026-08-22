@@ -11,13 +11,22 @@
     },
     "preview": {
       "distribution": "internal",
+      "autoIncrement": true,
       "environment": "preview",
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://drovixa-api-free.onrender.com/api/v1",
+        "EXPO_PUBLIC_APP_ENV": "staging"
+      }
     },
     "production": {
       "autoIncrement": true,
       "environment": "production",
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://drovixa-api-free.onrender.com/api/v1",
+        "EXPO_PUBLIC_APP_ENV": "production"
+      }
     }
   },
   "submit": {

@@ -18,6 +18,11 @@ export type PlaybackGrant = {
   dash_url: string;
   expires_at: string;
   duration_seconds: number | null;
+  title: string;
+  content_title: string;
+  poster_url: string | null;
+  profile_id: string | null;
+  autoplay_next: boolean;
   subtitles: SubtitleTrack[];
   progress_sync_interval_seconds: number;
 };

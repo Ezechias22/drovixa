@@ -5,8 +5,9 @@ shorts, and movie streaming platform. This delivery contains the completed
 **Phase 1 foundation**, **Phase 2 content/catalog**, **Phase 3 secure
 streaming**, **Phase 4 user experience**, **Phase 5 monetization**, and
 **Phase 6 community and moderation**, **Phase 7 administration**, **Phase 8
-production readiness and release engineering**, and **Phase 9 Firebase push
-notifications and Render deployment**.
+production readiness and release engineering**, **Phase 9 Firebase push
+notifications and Render deployment**, and **Phase 10 profiles, Kids mode,
+ratings, secure downloads, casting, and device playback**.
 
 ## Repository map
 
@@ -83,6 +84,13 @@ dashboard. Android builds use the native FCM token from `expo-notifications`;
 Firebase Admin credentials remain server-only. A root `render.yaml` provisions
 the API, Web, Admin, worker, PostgreSQL, and persistent Key Value services.
 
+Phase 10 adds up to five viewer profiles per account, PIN-protected and
+age-filtered Kids profiles, profile-aware discovery/playback, five-star ratings,
+Premium application-private offline downloads with expiring server licenses,
+Chromecast and AirPlay controls, playback speed, device/session management, and
+an Admin experience dashboard. Mobile downloads use Mux signed static
+renditions; provider credentials never enter the client.
+
 The registration route enforces `registration_enabled` on the server. Later
 modules must use the same dependency pattern so disabling a module removes its
 client UI and also closes its API entrypoints.
@@ -100,7 +108,7 @@ curl http://localhost:8000/api/v1/health/ready
 Open the independent Admin Dashboard at `http://localhost:3001` and sign in with
 the super-administrator account stored in `.env`.
 
-Install and verify the Phase 9 clients:
+Install and verify the Phase 10 clients:
 
 ```bash
 npm install
@@ -174,6 +182,8 @@ make typecheck
 - Draft, scheduled, queued, partially delivered, sent and cancelled
   `/api/v1/admin/notification-campaigns`, including provider status and delivery summaries
 - Filterable, paginated `GET /api/v1/admin/audit-logs`
+- Authenticated `/api/v1/profiles`, `/ratings/{content_id}`, `/downloads`, and
+  `/cast-sessions`, plus `/api/v1/admin/experience/summary`
 
 Authentication responses return an access token and a refresh token. Clients
 must store the mobile refresh token in SecureStore; the web BFF should put it in
@@ -203,6 +213,6 @@ a Secure, HttpOnly, SameSite cookie. The API never stores the raw refresh token.
 - Remote push notifications require an EAS development/production build on
   Android; current Expo Go clients cannot exercise native remote push delivery.
 
-See `docs/PHASE_9.md`, `docs/RENDER_FIREBASE_SETUP.md`, `docs/OPERATIONS.md`, and
+See `docs/PHASE_10.md`, `docs/RENDER_FIREBASE_SETUP.md`, `docs/OPERATIONS.md`, and
 `docs/RELEASE_CHECKLIST.md` for production responsibilities and release gates.
 Mux provisioning and webhook details remain in `docs/PHASE_3_1_MUX.md`.

@@ -40,6 +40,13 @@ class PlaybackGrant:
     expires_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class DownloadGrant:
+    url: str
+    expires_at: datetime
+    quality: str
+
+
 class VideoProvider(ABC):
     name: str
     webhook_signature_header = "Webhook-Signature"
@@ -94,6 +101,24 @@ class VideoProvider(ABC):
         country_code: str | None,
     ) -> PlaybackGrant:
         """Create short-lived HLS/DASH playback URLs."""
+
+    async def create_signed_download_url(
+        self,
+        *,
+        provider_asset_id: str,
+        playback_id: str | None,
+        expires_at: datetime,
+        quality: str,
+    ) -> DownloadGrant:
+        """Return a short-lived progressive download URL when supported."""
+        del provider_asset_id, playback_id, expires_at, quality
+        from app.core.exceptions import AppError
+
+        raise AppError(
+            "DOWNLOAD_PROVIDER_UNSUPPORTED",
+            "Secure downloads are unavailable for this video provider.",
+            status_code=501,
+        )
 
     @abstractmethod
     def generate_thumbnail(self, provider_asset_id: str, *, time_seconds: int = 0) -> str:

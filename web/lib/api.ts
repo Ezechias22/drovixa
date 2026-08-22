@@ -12,6 +12,10 @@ export const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
   const accessToken = useAuthStore.getState().accessToken;
   if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`;
+  if (typeof window !== 'undefined') {
+    const profileId = sessionStorage.getItem('drovixa.web.profile');
+    if (profileId) config.headers['X-Drovixa-Profile-ID'] = profileId;
+  }
   return config;
 });
 

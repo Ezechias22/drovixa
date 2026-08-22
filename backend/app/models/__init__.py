@@ -30,6 +30,7 @@ from app.models.monetization import (
     WalletLedger,
 )
 from app.models.notifications import NotificationDelivery, PushToken
+from app.models.personalization import CastSession, ContentRating, DownloadLicense, ViewerProfile
 from app.models.rbac import Permission, Role, role_permissions, user_roles
 from app.models.streaming import (
     PlaybackSession,
@@ -44,15 +45,18 @@ from app.models.user import User
 __all__ = [
     "Actor",
     "AuditLog",
+    "CastSession",
     "CoinPackage",
     "Comment",
     "CommentLike",
     "Content",
     "ContentActor",
     "ContentCrew",
+    "ContentRating",
     "Country",
     "CrewMember",
     "Device",
+    "DownloadLicense",
     "Episode",
     "EpisodeUnlock",
     "Favorite",
@@ -65,8 +69,8 @@ __all__ = [
     "Movie",
     "Notification",
     "NotificationCampaign",
-    "NotificationPreference",
     "NotificationDelivery",
+    "NotificationPreference",
     "Payment",
     "PaymentEvent",
     "Permission",
@@ -92,6 +96,7 @@ __all__ = [
     "VideoAsset",
     "VideoUploadSession",
     "VideoWebhookEvent",
+    "ViewerProfile",
     "Wallet",
     "WalletLedger",
     "WatchHistory",

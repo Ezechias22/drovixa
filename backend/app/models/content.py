@@ -106,6 +106,7 @@ class Content(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     featured: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     premium: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     rating: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=0, server_default="0")
+    rating_count: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     view_count: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     like_count: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     license_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

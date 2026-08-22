@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 
 from app.api.deps import CurrentContext, DbSession, OptionalContext
 from app.core.rate_limit import rate_limit
@@ -26,6 +26,7 @@ router = APIRouter(tags=["Streaming"])
 Provider = Annotated[VideoProvider, Depends(get_video_provider)]
 Page = Annotated[int, Query(ge=1)]
 Limit = Annotated[int, Query(ge=1, le=100)]
+ProfileHeader = Annotated[UUID | None, Header(alias="X-Drovixa-Profile-ID")]
 
 
 def _meta(page: int, limit: int, total: int) -> dict[str, int]:
@@ -43,6 +44,7 @@ async def authorize_episode_compat(
     context: OptionalContext,
     db: DbSession,
     provider: Provider,
+    profile_id: ProfileHeader = None,
 ) -> dict[str, Any]:
     return success(
         await authorize_playback(
@@ -53,6 +55,7 @@ async def authorize_episode_compat(
             target_type=ContentType.SERIES,
             target_id=episode_id,
             client_device_id=payload.client_device_id,
+            profile_id=profile_id,
         )
     )
 
@@ -68,6 +71,7 @@ async def authorize_episode(
     context: OptionalContext,
     db: DbSession,
     provider: Provider,
+    profile_id: ProfileHeader = None,
 ) -> dict[str, Any]:
     return success(
         await authorize_playback(
@@ -78,6 +82,7 @@ async def authorize_episode(
             target_type=ContentType.SERIES,
             target_id=episode_id,
             client_device_id=payload.client_device_id,
+            profile_id=profile_id,
         )
     )
 
@@ -93,6 +98,7 @@ async def authorize_movie(
     context: OptionalContext,
     db: DbSession,
     provider: Provider,
+    profile_id: ProfileHeader = None,
 ) -> dict[str, Any]:
     return success(
         await authorize_playback(
@@ -103,6 +109,7 @@ async def authorize_movie(
             target_type=ContentType.MOVIE,
             target_id=movie_id,
             client_device_id=payload.client_device_id,
+            profile_id=profile_id,
         )
     )
 

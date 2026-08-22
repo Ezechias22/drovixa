@@ -101,6 +101,16 @@ async def test_mux_adapter_direct_upload_poll_and_signed_playback() -> None:
                         "passthrough": "11111111-1111-1111-1111-111111111111",
                         "playback_ids": [{"id": "mux-playback-123", "policy": "signed"}],
                         "tracks": [{"type": "video", "max_width": 1080, "max_height": 1920}],
+                        "static_renditions": {
+                            "status": "ready",
+                            "files": [
+                                {
+                                    "name": "720p.mp4",
+                                    "resolution": "720p",
+                                    "status": "ready",
+                                }
+                            ],
+                        },
                     }
                 },
             )
@@ -154,6 +164,23 @@ async def test_mux_adapter_direct_upload_poll_and_signed_playback() -> None:
     claims = jwt.decode(token, public_key, algorithms=["RS256"], audience="v")
     assert claims["sub"] == "mux-playback-123"
     assert claims["kid"] == "mux-signing-key"
+
+    download = await provider.create_signed_download_url(
+        provider_asset_id=metadata.provider_asset_id,
+        playback_id=metadata.playback_id,
+        expires_at=expires_at,
+        quality="720p",
+    )
+    download_url = urlparse(download.url)
+    assert download_url.path == "/mux-playback-123/720p.mp4"
+    download_token = parse_qs(download_url.query)["token"][0]
+    download_claims = jwt.decode(
+        download_token,
+        public_key,
+        algorithms=["RS256"],
+        audience="v",
+    )
+    assert download_claims["sub"] == "mux-playback-123"
 
     thumbnail = provider.generate_thumbnail("mux-playback-123", time_seconds=12)
     thumbnail_token = parse_qs(urlparse(thumbnail).query)["token"][0]

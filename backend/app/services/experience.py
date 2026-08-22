@@ -41,6 +41,20 @@ def _public_conditions() -> tuple[Any, ...]:
     )
 
 
+async def _viewer_conditions(
+    db: AsyncSession, context: AuthContext | None, profile_id: UUID | None
+) -> tuple[Any, ...]:
+    conditions = list(_public_conditions())
+    if context is not None:
+        from app.services.personalization import kids_age_ratings, owned_profile
+
+        profile = await owned_profile(db, context=context, profile_id=profile_id)
+        allowed = kids_age_ratings(profile)
+        if allowed is not None:
+            conditions.append(Content.age_rating.in_(allowed))
+    return tuple(conditions)
+
+
 async def _favorite_ids(db: AsyncSession, user_id: UUID | None) -> set[UUID]:
     if user_id is None:
         return set()
@@ -60,8 +74,10 @@ def _cards(
     return result
 
 
-async def home_payload(db: AsyncSession, context: AuthContext | None) -> dict[str, Any]:
-    conditions = _public_conditions()
+async def home_payload(
+    db: AsyncSession, context: AuthContext | None, profile_id: UUID | None = None
+) -> dict[str, Any]:
+    conditions = await _viewer_conditions(db, context, profile_id)
     user_id = context.user.id if context else None
     favorites = await _favorite_ids(db, user_id)
 
@@ -252,8 +268,9 @@ async def discover_content(
     completed: bool | None,
     orientation: Orientation | None,
     sort: str,
+    profile_id: UUID | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
-    statement = select(Content).where(*_public_conditions())
+    statement = select(Content).where(*(await _viewer_conditions(db, context, profile_id)))
     if content_type:
         statement = statement.where(Content.type == content_type)
     if genre:
@@ -293,7 +310,13 @@ async def discover_content(
 
 
 async def search_content(
-    db: AsyncSession, *, context: AuthContext | None, query: str, page: int, limit: int
+    db: AsyncSession,
+    *,
+    context: AuthContext | None,
+    query: str,
+    page: int,
+    limit: int,
+    profile_id: UUID | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     q = " ".join(query.split()).casefold()
     if not q:
@@ -310,7 +333,9 @@ async def search_content(
         Content.country.has(func.lower(Country.name).like(pattern)),
         Content.original_language.has(func.lower(Language.name).like(pattern)),
     )
-    statement = select(Content).where(*_public_conditions(), searchable)
+    statement = select(Content).where(
+        *(await _viewer_conditions(db, context, profile_id)), searchable
+    )
     total = int(await db.scalar(select(func.count()).select_from(statement.subquery())) or 0)
     exact = case((func.lower(Content.title) == q, 0), else_=1)
     rows = list(
@@ -326,7 +351,11 @@ async def search_content(
 
 
 async def search_suggestions(
-    db: AsyncSession, *, context: AuthContext | None, query: str
+    db: AsyncSession,
+    *,
+    context: AuthContext | None,
+    query: str,
+    profile_id: UUID | None = None,
 ) -> dict[str, Any]:
     q = " ".join(query.split()).casefold()
     recent: list[str] = []
@@ -352,7 +381,10 @@ async def search_suggestions(
         (
             await db.scalars(
                 select(Content)
-                .where(*_public_conditions(), func.lower(Content.title).like(pattern))
+                .where(
+                    *(await _viewer_conditions(db, context, profile_id)),
+                    func.lower(Content.title).like(pattern),
+                )
                 .order_by(Content.view_count.desc())
                 .limit(6)
             )
@@ -407,7 +439,12 @@ async def trending_searches(db: AsyncSession) -> list[str]:
 
 
 async def shorts_feed(
-    db: AsyncSession, *, context: AuthContext | None, page: int, limit: int
+    db: AsyncSession,
+    *,
+    context: AuthContext | None,
+    page: int,
+    limit: int,
+    profile_id: UUID | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     now = utcnow()
     conditions = (
@@ -415,7 +452,7 @@ async def shorts_feed(
         Episode.status == ContentStatus.PUBLISHED,
         or_(Episode.published_at.is_(None), Episode.published_at <= now),
         Episode.orientation == Orientation.VERTICAL,
-        *_public_conditions(),
+        *(await _viewer_conditions(db, context, profile_id)),
     )
     statement = select(Episode).join(Episode.series).join(Series.content).where(*conditions)
     total = int(await db.scalar(select(func.count()).select_from(statement.subquery())) or 0)

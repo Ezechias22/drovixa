@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Header, Query, status
 from sqlalchemy import func, or_, select, update
 
 from app.api.deps import CurrentContext, DbSession, OptionalContext
@@ -33,6 +33,7 @@ from app.services.experience import (
 router = APIRouter(tags=["User experience"])
 Page = Annotated[int, Query(ge=1)]
 Limit = Annotated[int, Query(ge=1, le=100)]
+ProfileHeader = Annotated[UUID | None, Header(alias="X-Drovixa-Profile-ID")]
 
 
 def _meta(page: int, limit: int, total: int) -> dict[str, int]:
@@ -40,8 +41,10 @@ def _meta(page: int, limit: int, total: int) -> dict[str, int]:
 
 
 @router.get("/home")
-async def home(context: OptionalContext, db: DbSession) -> dict[str, Any]:
-    return success(await home_payload(db, context))
+async def home(
+    context: OptionalContext, db: DbSession, profile_id: ProfileHeader = None
+) -> dict[str, Any]:
+    return success(await home_payload(db, context, profile_id))
 
 
 @router.get("/discover")
@@ -59,6 +62,7 @@ async def discover(
     completed: bool | None = None,
     orientation: Orientation | None = None,
     sort: str = Query(default="popular", pattern="^(popular|new|rating)$"),
+    profile_id: ProfileHeader = None,
 ) -> dict[str, Any]:
     rows, total = await discover_content(
         db,
@@ -74,15 +78,22 @@ async def discover(
         completed=completed,
         orientation=orientation,
         sort=sort,
+        profile_id=profile_id,
     )
     return success(rows, meta=_meta(page, limit, total))
 
 
 @router.get("/shorts")
 async def shorts(
-    context: OptionalContext, db: DbSession, page: Page = 1, limit: Limit = 10
+    context: OptionalContext,
+    db: DbSession,
+    page: Page = 1,
+    limit: Limit = 10,
+    profile_id: ProfileHeader = None,
 ) -> dict[str, Any]:
-    rows, total = await shorts_feed(db, context=context, page=page, limit=limit)
+    rows, total = await shorts_feed(
+        db, context=context, page=page, limit=limit, profile_id=profile_id
+    )
     return success(rows, meta=_meta(page, limit, total))
 
 
@@ -93,16 +104,27 @@ async def search(
     q: str = Query(min_length=1, max_length=160),
     page: Page = 1,
     limit: Limit = 20,
+    profile_id: ProfileHeader = None,
 ) -> dict[str, Any]:
-    rows, total = await search_content(db, context=context, query=q, page=page, limit=limit)
+    rows, total = await search_content(
+        db,
+        context=context,
+        query=q,
+        page=page,
+        limit=limit,
+        profile_id=profile_id,
+    )
     return success(rows, meta=_meta(page, limit, total))
 
 
 @router.get("/search/suggestions")
 async def suggestions(
-    context: OptionalContext, db: DbSession, q: str = Query(default="", max_length=160)
+    context: OptionalContext,
+    db: DbSession,
+    q: str = Query(default="", max_length=160),
+    profile_id: ProfileHeader = None,
 ) -> dict[str, Any]:
-    return success(await search_suggestions(db, context=context, query=q))
+    return success(await search_suggestions(db, context=context, query=q, profile_id=profile_id))
 
 
 @router.get("/search/trending")

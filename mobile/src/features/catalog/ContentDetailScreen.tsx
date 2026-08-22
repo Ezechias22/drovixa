@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/ScreenStates'
 import { CommentsPanel } from '@/features/community/CommentsPanel';
 import { setLike } from '@/features/community/api';
 import { getFeatureFlags } from '@/features/configuration/api';
+import { RatingControl } from '@/features/personalization/RatingControl';
 import { useAuthStore } from '@/stores/auth-store';
 import { colors } from '@/theme';
 
@@ -84,6 +85,7 @@ export function ContentDetailScreen({ type, slug }: { type: 'series' | 'movie'; 
         </View>
         {item.genres.length ? <Text style={styles.small}>Genres · {item.genres.map((genre) => genre.name).join(' · ')}</Text> : null}
         {item.cast.length ? <View style={styles.section}><Text style={styles.heading}>Cast</Text><Text style={styles.small}>{item.cast.map((credit) => `${credit.actor.name}${credit.character_name ? ` as ${credit.character_name}` : ''}`).join('  •  ')}</Text></View> : null}
+        {session && flags.data?.ratings_enabled?.enabled ? <RatingControl contentId={item.id} /> : null}
         {type === 'series' ? <View style={styles.section}>
           <Text style={styles.heading}>Episodes</Text>
           {episodes.isPending ? <LoadingState label="Loading episodes…" /> : episodes.data?.length ? episodes.data.map((episode) => (

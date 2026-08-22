@@ -13,6 +13,7 @@ import jwt
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.integrations.videos.base import (
+    DownloadGrant,
     PlaybackGrant,
     ProviderUpload,
     VideoMetadata,
@@ -269,6 +270,56 @@ class MuxVideoProvider(VideoProvider):
             hls_url=f"https://stream.mux.com/{effective_playback_id}.m3u8?token={token}",
             dash_url=None,
             expires_at=expires_at,
+        )
+
+    async def create_signed_download_url(
+        self,
+        *,
+        provider_asset_id: str,
+        playback_id: str | None,
+        expires_at: datetime,
+        quality: str,
+    ) -> DownloadGrant:
+        metadata = await self.get_video_metadata(provider_asset_id)
+        effective_playback_id = playback_id or metadata.playback_id
+        if not effective_playback_id:
+            raise AppError(
+                "VIDEO_NOT_READY",
+                "Mux has not created a playback ID for this asset.",
+                status_code=409,
+            )
+        raw = metadata.raw
+        static = raw.get("static_renditions") if isinstance(raw, dict) else None
+        files = static.get("files", []) if isinstance(static, dict) else []
+        ready_names = {
+            str(item.get("name"))
+            for item in files
+            if isinstance(item, dict) and item.get("status") == "ready" and item.get("name")
+        }
+        preferred = f"{quality}.mp4"
+        rendition_name = preferred if preferred in ready_names else None
+        if rendition_name is None and quality == "highest" and ready_names:
+            rendition_name = sorted(ready_names)[0]
+        if rendition_name is None:
+            try:
+                await self._request(
+                    "POST",
+                    f"/assets/{provider_asset_id}/static-renditions",
+                    json_body={"resolution": quality},
+                )
+            except AppError:
+                # Mux returns a conflict when the rendition already exists or is preparing.
+                pass
+            raise AppError(
+                "DOWNLOAD_PREPARING",
+                "The secure offline rendition is being prepared. Try again shortly.",
+                status_code=409,
+            )
+        token = self._sign_token(effective_playback_id, audience="v", expires_at=expires_at)
+        return DownloadGrant(
+            url=(f"https://stream.mux.com/{effective_playback_id}/{rendition_name}?token={token}"),
+            expires_at=expires_at,
+            quality=quality,
         )
 
     def generate_thumbnail(self, provider_asset_id: str, *, time_seconds: int = 0) -> str:

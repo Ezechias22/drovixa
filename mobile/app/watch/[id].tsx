@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CommentsPanel } from '@/features/community/CommentsPanel';
 import { getFeatureFlags } from '@/features/configuration/api';
@@ -10,11 +10,14 @@ import { DrovixaVideoPlayer } from '@/features/player/DrovixaVideoPlayer';
 import { authorizePlayback, playbackRefreshInterval } from '@/features/player/api';
 import type { PlaybackTarget } from '@/features/player/types';
 import { getOrCreateDeviceId } from '@/services/device';
+import { downloadForOffline } from '@/services/offline-downloads';
+import { useAuthStore } from '@/stores/auth-store';
 
 export default function WatchScreen() {
   const params = useLocalSearchParams<{ id: string; type?: string; target?: string }>();
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const session = useAuthStore((state) => state.session);
   const target: PlaybackTarget = params.target === 'movie' || params.type === 'movie' ? 'movie' : 'episode';
 
   useEffect(() => {
@@ -29,6 +32,19 @@ export default function WatchScreen() {
     refetchInterval: (query) => playbackRefreshInterval(query.state.data),
   });
   const flags = useQuery({ queryKey: ['feature-flags'], queryFn: getFeatureFlags });
+  const offline = useMutation({
+    mutationFn: () => downloadForOffline({
+      id: params.id,
+      target,
+      title: grant.data!.title,
+      posterUrl: grant.data!.poster_url,
+    }),
+    onSuccess: () => Alert.alert('Download ready', 'The video is saved in Drovixa private storage.'),
+    onError: (error) => {
+      const message = axios.isAxiosError(error) ? error.response?.data?.error?.message : null;
+      Alert.alert('Download', message ?? 'Download failed. Please try again.');
+    },
+  });
 
   if (grant.isPending) {
     return (
@@ -52,6 +68,11 @@ export default function WatchScreen() {
   return (
     <View style={styles.screen}>
       <DrovixaVideoPlayer grant={grant.data} />
+      {session && flags.data?.downloads_enabled?.enabled ? (
+        <Pressable disabled={offline.isPending} onPress={() => offline.mutate()} style={styles.downloadButton}>
+          <Text style={styles.commentsButtonText}>{offline.isPending ? 'Downloading…' : '↓ Download'}</Text>
+        </Pressable>
+      ) : null}
       {target === 'episode' && flags.data?.comments_enabled?.enabled ? (
         <Pressable onPress={() => setCommentsOpen(true)} style={styles.commentsButton}>
           <Text style={styles.commentsButtonText}>◌ Comments</Text>
@@ -85,6 +106,7 @@ const styles = StyleSheet.create({
   title: { color: '#FFFFFF', fontSize: 22, fontWeight: '700' },
   secondary: { color: '#9CA3AF', fontSize: 15, textAlign: 'center' },
   commentsButton: { position: 'absolute', right: 18, bottom: 22, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 99, backgroundColor: '#111318e8' },
+  downloadButton: { position: 'absolute', left: 18, bottom: 22, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 99, backgroundColor: '#111318e8' },
   commentsButtonText: { color: '#FFFFFF', fontWeight: '900' },
   commentsScreen: { flex: 1, backgroundColor: '#08090B' },
   commentsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 56, paddingBottom: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ffffff18' },

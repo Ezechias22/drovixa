@@ -242,6 +242,7 @@ async def authorize_playback(
     target_type: ContentType,
     target_id: UUID,
     client_device_id: str | None,
+    profile_id: UUID | None = None,
 ) -> dict[str, Any]:
     content: Content
     episode: Episode | None
@@ -259,6 +260,18 @@ async def authorize_playback(
         )
     country = _request_country(request)
     _check_rights(content, country)
+    profile = None
+    if context is not None:
+        # Local import avoids a module cycle: personalization reuses playback rights checks.
+        from app.services.personalization import owned_profile, profile_allows_content
+
+        profile = await owned_profile(db, context=context, profile_id=profile_id)
+        if not profile_allows_content(profile, content):
+            raise AppError(
+                "KIDS_PROFILE_RESTRICTED",
+                "This title is not available for the selected Kids profile.",
+                status_code=403,
+            )
     await _check_access(
         db,
         context=context,
@@ -334,6 +347,11 @@ async def authorize_playback(
         "dash_url": grant.dash_url,
         "expires_at": grant.expires_at,
         "duration_seconds": asset.duration_seconds,
+        "title": episode.title if episode else content.title,
+        "content_title": content.title,
+        "poster_url": episode.thumbnail_url if episode else content.poster_url,
+        "profile_id": profile.id if profile else None,
+        "autoplay_next": profile.autoplay_next if profile else True,
         "subtitles": subtitle_tracks,
         "progress_sync_interval_seconds": get_settings().PROGRESS_SYNC_INTERVAL_SECONDS,
     }

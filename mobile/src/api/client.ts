@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 import { useAuthStore } from '@/stores/auth-store';
+import { useProfileStore } from '@/stores/profile-store';
 
 const baseURL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -15,6 +16,8 @@ export const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
   const accessToken = useAuthStore.getState().session?.accessToken;
   if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`;
+  const profileId = useProfileStore.getState().activeProfile?.id;
+  if (profileId) config.headers['X-Drovixa-Profile-ID'] = profileId;
   return config;
 });
 

@@ -15,6 +15,7 @@ const groups = [
     items: [
       ['/dashboard', 'Dashboard', '◆'],
       ['/analytics', 'Analytics', '⌁'],
+      ['/experience', 'Profiles & devices', '◈'],
     ],
   },
   {
@@ -127,7 +128,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </button>
             <h1>{title}</h1>
           </div>
-          <span className="topbar-meta">Phase 9 · Firebase notifications</span>
+          <span className="topbar-meta">Phase 10 · Profiles, offline & casting</span>
         </header>
         {children}
       </main>

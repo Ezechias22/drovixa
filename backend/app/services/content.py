@@ -374,6 +374,7 @@ def content_data(row: Content, *, detailed: bool = True) -> dict[str, Any]:
         "featured": row.featured,
         "premium": row.premium,
         "rating": row.rating,
+        "rating_count": row.rating_count,
         "like_count": row.like_count,
         "published_at": row.published_at,
     }

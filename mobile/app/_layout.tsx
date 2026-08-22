@@ -6,13 +6,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AnimatedDrovixaSplash } from '@/components/AnimatedDrovixaSplash';
 import { useAuthStore } from '@/stores/auth-store';
+import { useProfileStore } from '@/stores/profile-store';
 import { PushNotificationsBridge } from '@/services/push-notifications';
 import { colors } from '@/theme';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
   environment: process.env.EXPO_PUBLIC_APP_ENV ?? 'development',
-  release: process.env.EXPO_PUBLIC_RELEASE ?? 'drovixa-mobile@0.9.0',
+  release: process.env.EXPO_PUBLIC_RELEASE ?? 'drovixa-mobile@0.10.0',
   tracesSampleRate: Number(process.env.EXPO_PUBLIC_SENTRY_TRACES_SAMPLE_RATE ?? '0.1'),
   sendDefaultPii: false,
   enabled: Boolean(process.env.EXPO_PUBLIC_SENTRY_DSN),
@@ -21,6 +22,8 @@ Sentry.init({
 function RootLayout() {
   const hydrated = useAuthStore((state) => state.hydrated);
   const hydrate = useAuthStore((state) => state.hydrate);
+  const profileHydrated = useProfileStore((state) => state.hydrated);
+  const hydrateProfile = useProfileStore((state) => state.hydrate);
   const [introComplete, setIntroComplete] = useState(false);
   const [client] = useState(
     () =>
@@ -34,11 +37,12 @@ function RootLayout() {
 
   useEffect(() => {
     void hydrate();
-  }, [hydrate]);
+    void hydrateProfile();
+  }, [hydrate, hydrateProfile]);
 
   const finishIntro = useCallback(() => setIntroComplete(true), []);
 
-  if (!hydrated || !introComplete) {
+  if (!hydrated || !profileHydrated || !introComplete) {
     return <AnimatedDrovixaSplash onFinished={finishIntro} />;
   }
 
@@ -59,6 +63,10 @@ function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="search" options={{ title: 'Search' }} />
           <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
+          <Stack.Screen name="profiles" options={{ title: 'Profiles' }} />
+          <Stack.Screen name="devices" options={{ title: 'Devices' }} />
+          <Stack.Screen name="downloads" options={{ title: 'Downloads' }} />
+          <Stack.Screen name="offline/[id]" options={{ title: 'Offline playback' }} />
           <Stack.Screen name="coins" options={{ title: 'Coins', headerShown: false }} />
           <Stack.Screen name="premium" options={{ title: 'Premium', headerShown: false }} />
           <Stack.Screen
