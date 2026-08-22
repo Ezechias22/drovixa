@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drovixa-backend"
+version = "0.9.0"
+description = "Drovixa streaming platform API"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --strict-markers --disable-warnings"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "RUF"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+"app/core/config.py" = ["S105"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+strict = true
+warn_unreachable = true
+exclude = ["migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["celery", "celery.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["sentry_sdk", "sentry_sdk.*"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+omit = ["app/scripts/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

@@ -1,0 +1,14 @@
+{
+  "name": "drovixa",
+  "version": "0.9.0",
+  "private": true,
+  "workspaces": ["mobile", "web", "admin"],
+  "scripts": {
+    "mobile": "npm run start --workspace @drovixa/mobile",
+    "web": "npm run dev --workspace @drovixa/web",
+    "admin": "npm run dev --workspace @drovixa/admin",
+    "typecheck:clients": "npm run typecheck --workspace @drovixa/mobile && npm run typecheck --workspace @drovixa/web && npm run typecheck --workspace @drovixa/admin",
+    "build:clients": "npm run build --workspace @drovixa/web && npm run build --workspace @drovixa/admin",
+    "verify": "npm run typecheck:clients && npm run build:clients"
+  }
+}

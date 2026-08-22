@@ -1,0 +1,1 @@
+export default function Page(){return <div className="mx-auto max-w-3xl px-5 py-14"><h1 className="text-4xl font-black">Help Center</h1><p className="mt-4 text-[var(--muted)]">Support articles and ticketing will be connected to the admin CMS.</p></div>}

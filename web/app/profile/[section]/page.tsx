@@ -1,0 +1,1 @@
+export default async function Page({params}:{params:Promise<{section:string}>}){const {section}=await params;return <div className="mx-auto max-w-3xl px-5 py-14"><h1 className="text-4xl font-black capitalize">{section.replaceAll('-',' ')}</h1><p className="mt-4 text-[var(--muted)]">This setting will be expanded in its scheduled product phase.</p></div>}

@@ -1,0 +1,15 @@
+'use client';
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+
+import { Badge, PageHeading, QueryState } from '@/components/ui';
+import { apiRequest, formatDate } from '@/lib/api';
+
+type Report = { id: string; reporter: { id: string; name: string }; target_type: string; target_id?: string | null; reason_code: string; details?: string | null; status: string; resolution_note?: string | null; created_at: string };
+export default function ReportsPage() {
+  const client = useQueryClient(); const [status, setStatus] = useState('');
+  const query = useQuery({ queryKey: ['reports', status], queryFn: async () => (await apiRequest<Report[]>(`/reports?page=1&limit=100${status ? `&status=${status}` : ''}`)).data });
+  const update = useMutation({ mutationFn: ({ id, next }: { id: string; next: string }) => apiRequest(`/reports/${id}`, { method: 'PATCH', body: JSON.stringify({ status: next, resolution_note: next === 'resolved' ? 'Resolved from Drovixa Admin' : `Marked ${next} from Drovixa Admin` }) }), onSuccess: () => client.invalidateQueries({ queryKey: ['reports'] }) });
+  return <div className="page"><PageHeading eyebrow="Trust operations" title="Reports" description="Investigate user reports and maintain an auditable moderation resolution trail." /><section className="panel"><div className="toolbar"><select className="select" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option><option value="open">Open</option><option value="under_review">Under review</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option></select></div>{update.error ? <div className="notice">{update.error.message}</div> : null}<QueryState loading={query.isLoading} error={query.error} empty={query.data?.length === 0}><div className="table-wrap"><table className="data-table"><thead><tr><th>Report</th><th>Reporter</th><th>Target</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead><tbody>{query.data?.map((item) => <tr key={item.id}><td className="primary-cell"><strong>{item.reason_code.replaceAll('_',' ')}</strong><small>{item.details ?? 'No additional details'}</small></td><td>{item.reporter.name}</td><td>{item.target_type} · {item.target_id?.slice(0,8) ?? 'system'}</td><td><Badge tone={item.status === 'resolved' ? 'success' : item.status === 'open' ? 'danger' : 'warning'}>{item.status}</Badge></td><td>{formatDate(item.created_at)}</td><td><div className="actions">{item.status === 'open' ? <button className="button button-quiet" onClick={() => update.mutate({ id: item.id, next: 'under_review' })}>Review</button> : null}{!['resolved','dismissed'].includes(item.status) ? <><button className="button button-primary" onClick={() => update.mutate({ id: item.id, next: 'resolved' })}>Resolve</button><button className="button button-danger" onClick={() => update.mutate({ id: item.id, next: 'dismissed' })}>Dismiss</button></> : null}</div></td></tr>)}</tbody></table></div></QueryState></section></div>;
+}

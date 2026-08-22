@@ -1,0 +1,40 @@
+name: Mobile Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Mobile platform
+        type: choice
+        options: [all, android, ios]
+        default: all
+      submit:
+        description: Submit after build
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  eas:
+    runs-on: ubuntu-latest
+    environment: mobile-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Build signed binaries
+        working-directory: mobile
+        run: eas build --platform "${{ inputs.platform }}" --profile production --non-interactive --no-wait
+      - name: Submit latest builds
+        if: ${{ inputs.submit }}
+        working-directory: mobile
+        run: eas submit --platform "${{ inputs.platform }}" --profile production --latest --non-interactive

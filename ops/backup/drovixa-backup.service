@@ -1,0 +1,13 @@
+[Unit]
+Description=Drovixa encrypted-channel PostgreSQL backup
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=drovixa-backup
+EnvironmentFile=/etc/drovixa/backup.env
+ExecStart=/opt/drovixa/ops/backup/backup.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/drovixa

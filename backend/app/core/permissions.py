@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+PERMISSIONS: dict[str, str] = {
+    "content.view": "View content administration",
+    "content.create": "Create content",
+    "content.edit": "Edit content",
+    "content.delete": "Archive or delete content",
+    "content.publish": "Publish content",
+    "users.view": "View users",
+    "users.suspend": "Suspend or restore users",
+    "wallet.view": "View wallet information",
+    "wallet.adjust": "Make audited wallet adjustments",
+    "payments.view": "View payment records",
+    "payments.refund": "Issue payment refunds",
+    "subscriptions.manage": "Manage subscriptions",
+    "comments.moderate": "Moderate comments",
+    "reports.manage": "Manage reports",
+    "notifications.manage": "Manage notification campaigns",
+    "settings.view": "View private platform settings",
+    "settings.manage": "Change platform settings",
+    "admins.manage": "Manage administrators",
+    "roles.manage": "Manage roles and permissions",
+    "audit.view": "View audit logs",
+    "analytics.view": "View administrative analytics",
+    "support.manage": "Manage support tickets",
+}
+
+ROLE_PERMISSIONS: dict[str, set[str]] = {
+    "guest": set(),
+    "user": set(),
+    "premium_user": set(),
+    "moderator": {"comments.moderate", "reports.manage", "content.view"},
+    "content_manager": {
+        "content.view",
+        "content.create",
+        "content.edit",
+        "content.delete",
+        "content.publish",
+        "analytics.view",
+    },
+    "support_agent": {"users.view", "support.manage", "reports.manage"},
+    "finance_admin": {
+        "users.view",
+        "wallet.view",
+        "wallet.adjust",
+        "payments.view",
+        "payments.refund",
+        "subscriptions.manage",
+        "analytics.view",
+    },
+    "admin": set(PERMISSIONS) - {"admins.manage", "roles.manage"},
+    "super_admin": set(PERMISSIONS),
+}

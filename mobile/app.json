@@ -1,0 +1,84 @@
+{
+  "expo": {
+    "name": "Drovixa",
+    "slug": "drovixa",
+    "version": "0.9.0",
+    "icon": "./assets/icon.png",
+    "orientation": "default",
+    "scheme": "drovixa",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#08090B"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.drovixa.app",
+      "buildNumber": "1",
+      "icon": "./assets/icon.png",
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": []
+      }
+    },
+    "android": {
+      "package": "com.drovixa.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#08090B"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/icon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#FF4D8D",
+          "defaultChannel": "drovixa_updates"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#08090B",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain"
+        }
+      ],
+      "@sentry/react-native/expo",
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": false,
+          "supportsPictureInPicture": true
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "phase": 9,
+      "router": {},
+      "eas": {
+        "projectId": "e5743269-30ec-4ab7-a519-a893b552564c"
+      }
+    },
+    "owner": "ezechias96"
+  }
+}

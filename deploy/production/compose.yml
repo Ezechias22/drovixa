@@ -1,0 +1,153 @@
+name: drovixa-production
+
+services:
+  migrate:
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE}
+    env_file: .env.production
+    environment:
+      SERVICE_ROLE: api
+    command: alembic upgrade head
+    restart: "no"
+
+  backend:
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE}
+    env_file: .env.production
+    environment:
+      SERVICE_ROLE: api
+    command: >-
+      uvicorn app.main:app --host 0.0.0.0 --port 8000
+      --workers ${WEB_CONCURRENCY:-2} --proxy-headers --forwarded-allow-ips=*
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/ready')"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  worker:
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE}
+    env_file: .env.production
+    environment:
+      SERVICE_ROLE: worker
+    command: celery -A app.workers.celery_app:celery_app worker --loglevel=INFO --concurrency=${CELERY_CONCURRENCY:-2}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  scheduler:
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE}
+    env_file: .env.production
+    environment:
+      SERVICE_ROLE: scheduler
+    command: celery -A app.workers.celery_app:celery_app beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  web:
+    image: ${WEB_IMAGE:?Set WEB_IMAGE}
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://${API_DOMAIN}/api/v1
+      NEXT_PUBLIC_APP_ENV: production
+      NEXT_PUBLIC_RELEASE: ${RELEASE:-drovixa@0.9.0}
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/web/.next/cache
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  admin:
+    image: ${ADMIN_IMAGE:?Set ADMIN_IMAGE}
+    environment:
+      NODE_ENV: production
+      INTERNAL_API_URL: http://backend:8000/api/v1
+      NEXT_PUBLIC_API_URL: https://${API_DOMAIN}/api/v1
+      ADMIN_COOKIE_SECURE: "true"
+      NEXT_PUBLIC_APP_ENV: production
+      NEXT_PUBLIC_RELEASE: ${RELEASE:-drovixa@0.9.0}
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/login').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/admin/.next/cache
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.10-alpine
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:?Set ADMIN_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN}
+      TLS_EMAIL: ${TLS_EMAIL:?Set TLS_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+      admin:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

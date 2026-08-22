@@ -1,0 +1,42 @@
+name: Client CI
+
+on:
+  push:
+    paths:
+      - "mobile/**"
+      - "web/**"
+      - "admin/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/client-ci.yml"
+  pull_request:
+    paths:
+      - "mobile/**"
+      - "web/**"
+      - "admin/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/client-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_NO_TELEMETRY: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+      EXPO_PUBLIC_API_URL: http://localhost:8000/api/v1
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck:clients
+      - run: npm run build --workspace @drovixa/web
+      - run: npm run build --workspace @drovixa/admin
+      - run: npm exec --workspace @drovixa/mobile -- expo config --type public

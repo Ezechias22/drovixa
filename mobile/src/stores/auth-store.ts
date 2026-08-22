@@ -1,0 +1,4 @@
+import * as SecureStore from 'expo-secure-store'; import { create } from 'zustand'; import type { UserData } from '@/features/catalog/types';
+const KEY='drovixa.auth.session.v1'; export type AuthSession={accessToken:string;refreshToken:string;user:UserData};
+type AuthState={session:AuthSession|null;hydrated:boolean;setSession:(session:AuthSession|null)=>Promise<void>;hydrate:()=>Promise<void>};
+export const useAuthStore=create<AuthState>((set)=>({session:null,hydrated:false,setSession:async(session)=>{if(session)await SecureStore.setItemAsync(KEY,JSON.stringify(session));else await SecureStore.deleteItemAsync(KEY);set({session})},hydrate:async()=>{try{const raw=await SecureStore.getItemAsync(KEY);set({session:raw?JSON.parse(raw) as AuthSession:null,hydrated:true})}catch{await SecureStore.deleteItemAsync(KEY);set({session:null,hydrated:true})}}}));

@@ -1,0 +1,50 @@
+name: Security CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install pip-audit
+      - run: pip-audit -r backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Strict Web and Admin runtime audit
+        run: npm audit --workspace @drovixa/web --workspace @drovixa/admin --omit=dev --audit-level=high
+      - name: Mobile runtime audit (block critical; review Expo build-tool advisories)
+        run: npm audit --workspace @drovixa/mobile --omit=dev --audit-level=critical
+
+  repository-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+      - name: Filesystem vulnerability scan
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

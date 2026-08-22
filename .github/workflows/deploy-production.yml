@@ -1,0 +1,59 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing immutable image tag
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drovixa-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          SSH_HOST: ${{ secrets.PRODUCTION_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+      - name: Pull, migrate, and roll out
+        shell: bash
+        env:
+          SSH_HOST: ${{ secrets.PRODUCTION_HOST }}
+          SSH_USER: ${{ secrets.PRODUCTION_USER }}
+          DEPLOY_PATH: ${{ secrets.PRODUCTION_DEPLOY_PATH }}
+          VERSION: ${{ inputs.version }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" \
+            "cd '$DEPLOY_PATH/deploy/production' && \
+             BACKEND_IMAGE='ghcr.io/$OWNER/drovixa-backend:$VERSION' \
+             WEB_IMAGE='ghcr.io/$OWNER/drovixa-web:$VERSION' \
+             ADMIN_IMAGE='ghcr.io/$OWNER/drovixa-admin:$VERSION' \
+             RELEASE='drovixa@$VERSION' \
+             docker compose --env-file .env.production pull && \
+             BACKEND_IMAGE='ghcr.io/$OWNER/drovixa-backend:$VERSION' \
+             WEB_IMAGE='ghcr.io/$OWNER/drovixa-web:$VERSION' \
+             ADMIN_IMAGE='ghcr.io/$OWNER/drovixa-admin:$VERSION' \
+             RELEASE='drovixa@$VERSION' \
+             docker compose --env-file .env.production up -d --wait"
+      - name: Public smoke test
+        env:
+          API_ORIGIN: ${{ vars.PRODUCTION_API_ORIGIN }}
+          APP_ORIGIN: ${{ vars.PRODUCTION_APP_ORIGIN }}
+          ADMIN_ORIGIN: ${{ vars.PRODUCTION_ADMIN_ORIGIN }}
+        run: ./ops/smoke/smoke-test.sh "$API_ORIGIN" "$APP_ORIGIN" "$ADMIN_ORIGIN"
