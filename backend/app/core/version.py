@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-APP_VERSION = "0.10.0"
+APP_VERSION = "0.11.0"
 BUILD_SHA = os.getenv("BUILD_SHA", "local")
 RELEASE = os.getenv("RELEASE", f"drovixa@{APP_VERSION}")
 

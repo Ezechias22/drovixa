@@ -16,6 +16,7 @@ const groups = [
       ['/dashboard', 'Dashboard', '◆'],
       ['/analytics', 'Analytics', '⌁'],
       ['/experience', 'Profiles & devices', '◈'],
+      ['/growth', 'Growth & Watch Party', '↗'],
     ],
   },
   {
@@ -128,7 +129,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </button>
             <h1>{title}</h1>
           </div>
-          <span className="topbar-meta">Phase 10 · Profiles, offline & casting</span>
+          <span className="topbar-meta">Phase 11 · Growth, rewards & Watch Party</span>
         </header>
         {children}
       </main>

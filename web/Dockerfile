@@ -10,6 +10,7 @@ FROM node:22-alpine AS builder
 WORKDIR /workspace
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=dependencies /workspace/node_modules ./node_modules
+COPY --from=dependencies /workspace/web/node_modules ./web/node_modules
 COPY package.json package-lock.json ./
 COPY web ./web
 ARG NEXT_PUBLIC_API_URL=/api/drovixa

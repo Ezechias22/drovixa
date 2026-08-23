@@ -6,8 +6,10 @@ shorts, and movie streaming platform. This delivery contains the completed
 streaming**, **Phase 4 user experience**, **Phase 5 monetization**, and
 **Phase 6 community and moderation**, **Phase 7 administration**, **Phase 8
 production readiness and release engineering**, **Phase 9 Firebase push
-notifications and Render deployment**, and **Phase 10 profiles, Kids mode,
-ratings, secure downloads, casting, and device playback**.
+notifications and Render deployment**, **Phase 10 profiles, Kids mode, ratings,
+secure downloads, casting, and device playback**, and **Phase 11 server-issued
+ads, daily coin streaks, referral rewards, verified Google/Apple identity
+exchange, Watch Party rooms, and growth automations**.
 
 ## Repository map
 
@@ -91,6 +93,12 @@ Chromecast and AirPlay controls, playback speed, device/session management, and
 an Admin experience dashboard. Mobile downloads use Mux signed static
 renditions; provider credentials never enter the client.
 
+Phase 11 adds frequency-capped house/partner ads with signed delivery sessions,
+idempotent rewarded-ad coins, a seven-day daily reward calendar, two-sided
+referral rewards backed by the wallet ledger, verified Google and Apple token
+exchange, synchronized Watch Party state and chat, and event-driven growth
+notifications. The Admin dashboard exposes acquisition and engagement signals.
+
 The registration route enforces `registration_enabled` on the server. Later
 modules must use the same dependency pattern so disabling a module removes its
 client UI and also closes its API entrypoints.
@@ -108,7 +116,7 @@ curl http://localhost:8000/api/v1/health/ready
 Open the independent Admin Dashboard at `http://localhost:3001` and sign in with
 the super-administrator account stored in `.env`.
 
-Install and verify the Phase 10 clients:
+Install and verify the Phase 11 clients:
 
 ```bash
 npm install
@@ -184,6 +192,8 @@ make typecheck
 - Filterable, paginated `GET /api/v1/admin/audit-logs`
 - Authenticated `/api/v1/profiles`, `/ratings/{content_id}`, `/downloads`, and
   `/cast-sessions`, plus `/api/v1/admin/experience/summary`
+- `/api/v1/ads`, `/rewards/daily`, `/referrals`, `/auth/social`,
+  `/watch-parties`, and `/api/v1/admin/growth`
 
 Authentication responses return an access token and a refresh token. Clients
 must store the mobile refresh token in SecureStore; the web BFF should put it in
@@ -208,11 +218,11 @@ a Secure, HttpOnly, SameSite cookie. The API never stores the raw refresh token.
   flows work without a payment provider; real web purchases require Stripe
   server credentials and a signed webhook. Mobile purchases remain closed until
   Apple/Google server verification is provisioned.
-- Google/Apple auth, password-reset email delivery, and email verification need
-  provider credentials and are intentionally not presented as working stubs.
+- Google/Apple auth activates only when matching OAuth client IDs are configured;
+  server-side identity-token validation remains mandatory.
 - Remote push notifications require an EAS development/production build on
   Android; current Expo Go clients cannot exercise native remote push delivery.
 
-See `docs/PHASE_10.md`, `docs/RENDER_FIREBASE_SETUP.md`, `docs/OPERATIONS.md`, and
+See `docs/PHASE_11.md`, `docs/RENDER_FIREBASE_SETUP.md`, `docs/OPERATIONS.md`, and
 `docs/RELEASE_CHECKLIST.md` for production responsibilities and release gates.
 Mux provisioning and webhook details remain in `docs/PHASE_3_1_MUX.md`.

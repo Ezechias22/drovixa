@@ -7,7 +7,7 @@ import { getFeatureFlags } from '@/features/configuration/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { colors } from '@/theme';
 
-const menu = ['Profiles', 'Premium', 'Coins', 'My List', 'Downloads', 'Notifications', 'Language', 'Subtitle settings', 'Playback', 'Devices', 'Security', 'Help center'];
+const menu = ['Profiles', 'Premium', 'Coins', 'Rewards & referrals', 'My List', 'Downloads', 'Notifications', 'Language', 'Subtitle settings', 'Playback', 'Devices', 'Security', 'Help center'];
 export default function ProfileScreen() {
   const inset=useSafeAreaInsets(), router=useRouter(), queryClient=useQueryClient();
   const session=useAuthStore((state)=>state.session), setSession=useAuthStore((state)=>state.setSession);
@@ -16,7 +16,7 @@ export default function ProfileScreen() {
   const signOut=useMutation({mutationFn:logout,onSettled:async()=>{await setSession(null);queryClient.clear();}});
   return <ScrollView style={styles.screen} contentContainerStyle={[styles.content,{paddingTop:inset.top+18}]}><Text style={styles.eyebrow}>ACCOUNT</Text><Text style={styles.title}>Profile</Text>
     {session?<View style={styles.account}><View style={styles.avatar}><Text style={styles.avatarText}>{session.user.name.slice(0,1).toUpperCase()}</Text></View><View><Text style={styles.name}>{session.user.name}</Text><Text style={styles.email}>{session.user.email}</Text></View></View>:<View style={styles.guest}><Text style={styles.name}>Guest mode</Text><Text style={styles.email}>Sign in to unlock your personalized Drovixa experience.</Text><View style={styles.authRow}><Pressable style={styles.primary} onPress={()=>router.push('/login')}><Text style={styles.primaryText}>Sign in</Text></Pressable><Pressable style={styles.secondary} onPress={()=>router.push('/register')}><Text style={styles.secondaryText}>Create account</Text></Pressable></View></View>}
-    <View style={styles.menu}>{visibleMenu.map((item)=><Pressable key={item} style={styles.menuItem} onPress={()=>{if(item==='Profiles')router.push('/profiles');if(item==='Premium')router.push('/premium');if(item==='Coins')router.push('/coins');if(item==='My List')router.push('/(tabs)/library');if(item==='Downloads')router.push('/downloads');if(item==='Notifications')router.push('/notifications');if(item==='Devices')router.push('/devices')}}><Text style={styles.menuText}>{item}</Text><Text style={styles.chevron}>›</Text></Pressable>)}</View>
+    <View style={styles.menu}>{visibleMenu.map((item)=><Pressable key={item} style={styles.menuItem} onPress={()=>{if(item==='Profiles')router.push('/profiles');if(item==='Premium')router.push('/premium');if(item==='Coins')router.push('/coins');if(item==='Rewards & referrals')router.push('/growth' as never);if(item==='My List')router.push('/(tabs)/library');if(item==='Downloads')router.push('/downloads');if(item==='Notifications')router.push('/notifications');if(item==='Devices')router.push('/devices')}}><Text style={styles.menuText}>{item}</Text><Text style={styles.chevron}>›</Text></Pressable>)}</View>
     {session?<Pressable disabled={signOut.isPending} style={styles.logout} onPress={()=>signOut.mutate()}><Text style={styles.logoutText}>{signOut.isPending?'Signing out…':'Sign out'}</Text></Pressable>:null}
   </ScrollView>;
 }

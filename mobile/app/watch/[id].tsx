@@ -1,11 +1,12 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CommentsPanel } from '@/features/community/CommentsPanel';
 import { getFeatureFlags } from '@/features/configuration/api';
+import { createWatchParty } from '@/features/growth/api';
 import { DrovixaVideoPlayer } from '@/features/player/DrovixaVideoPlayer';
 import { authorizePlayback, playbackRefreshInterval } from '@/features/player/api';
 import type { PlaybackTarget } from '@/features/player/types';
@@ -18,6 +19,7 @@ export default function WatchScreen() {
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const session = useAuthStore((state) => state.session);
+  const router = useRouter();
   const target: PlaybackTarget = params.target === 'movie' || params.type === 'movie' ? 'movie' : 'episode';
 
   useEffect(() => {
@@ -44,6 +46,11 @@ export default function WatchScreen() {
       const message = axios.isAxiosError(error) ? error.response?.data?.error?.message : null;
       Alert.alert('Download', message ?? 'Download failed. Please try again.');
     },
+  });
+  const party = useMutation({
+    mutationFn: () => createWatchParty({ contentId: grant.data!.content_id, episodeId: grant.data!.episode_id, title: grant.data!.content_title }),
+    onSuccess: (data) => router.push(`/watch-party/${data.invite_code}` as never),
+    onError: (error) => Alert.alert('Watch Party', axios.isAxiosError(error) ? error.response?.data?.error?.message ?? 'Could not create party.' : 'Could not create party.'),
   });
 
   if (grant.isPending) {
@@ -73,6 +80,7 @@ export default function WatchScreen() {
           <Text style={styles.commentsButtonText}>{offline.isPending ? 'Downloading…' : '↓ Download'}</Text>
         </Pressable>
       ) : null}
+      {session && flags.data?.watch_party_enabled?.enabled ? <Pressable disabled={party.isPending} onPress={()=>party.mutate()} style={styles.partyButton}><Text style={styles.commentsButtonText}>{party.isPending?'Creating…':'◉ Watch Party'}</Text></Pressable>:null}
       {target === 'episode' && flags.data?.comments_enabled?.enabled ? (
         <Pressable onPress={() => setCommentsOpen(true)} style={styles.commentsButton}>
           <Text style={styles.commentsButtonText}>◌ Comments</Text>
@@ -107,6 +115,7 @@ const styles = StyleSheet.create({
   secondary: { color: '#9CA3AF', fontSize: 15, textAlign: 'center' },
   commentsButton: { position: 'absolute', right: 18, bottom: 22, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 99, backgroundColor: '#111318e8' },
   downloadButton: { position: 'absolute', left: 18, bottom: 22, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 99, backgroundColor: '#111318e8' },
+  partyButton: { position: 'absolute', left: 18, top: 22, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 99, backgroundColor: '#ff3d71dd' },
   commentsButtonText: { color: '#FFFFFF', fontWeight: '900' },
   commentsScreen: { flex: 1, backgroundColor: '#08090B' },
   commentsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 56, paddingBottom: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ffffff18' },

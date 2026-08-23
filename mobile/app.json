@@ -2,7 +2,7 @@
   "expo": {
     "name": "Drovixa",
     "slug": "drovixa",
-    "version": "0.10.0",
+    "version": "0.11.0",
     "icon": "./assets/icon.png",
     "orientation": "default",
     "scheme": "drovixa",
@@ -23,7 +23,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.drovixa.app",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "icon": "./assets/icon.png",
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": []
@@ -31,7 +31,7 @@
     },
     "android": {
       "package": "com.drovixa.app",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#08090B"
@@ -73,7 +73,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "phase": 10,
+      "phase": 11,
       "router": {},
       "eas": {
         "projectId": "e5743269-30ec-4ab7-a519-a893b552564c"
