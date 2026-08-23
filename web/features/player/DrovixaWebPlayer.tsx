@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import Hls from 'hls.js';
+import Hls, { ErrorTypes } from 'hls.js';
 import { useEffect, useRef, useState } from 'react';
 
 import { useAuthStore } from '@/stores/auth-store';
@@ -16,6 +16,7 @@ import {
 import type { PlaybackTarget } from './types';
 
 type Props = { id: string; target: PlaybackTarget };
+type PlayerFailure = { title: string; detail: string };
 
 export function DrovixaWebPlayer({ id, target }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -24,9 +25,11 @@ export function DrovixaWebPlayer({ id, target }: Props) {
   const lastSyncAt = useRef(0);
   const resumePosition = useRef(0);
   const shouldResumePlaying = useRef(true);
+  const recoveryAttempts = useRef({ network: 0, media: 0 });
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [qualityLevels, setQualityLevels] = useState<Array<{ index: number; label: string }>>([]);
   const [quality, setQuality] = useState(-1);
+  const [playerError, setPlayerError] = useState<PlayerFailure | null>(null);
   const isAuthenticated = useAuthStore((state) => Boolean(state.accessToken));
 
   useEffect(() => setDeviceId(getOrCreateWebDeviceId()), []);
@@ -43,32 +46,53 @@ export function DrovixaWebPlayer({ id, target }: Props) {
     const video = videoRef.current;
     const playback = grant.data;
     if (!video || !playback) return;
+    recoveryAttempts.current = { network: 0, media: 0 };
+    setPlayerError(null);
     const restorePlayback = () => {
       if (resumePosition.current > 0 && Number.isFinite(video.duration)) {
         video.currentTime = Math.min(resumePosition.current, video.duration);
       }
       if (shouldResumePlaying.current) void video.play().catch(() => undefined);
     };
+    const markPlaying = () => setPlayerError(null);
+    const markNativeError = () => {
+      setPlayerError({
+        title: 'Secure video could not be loaded',
+        detail: 'Refresh the secure playback link and try again.',
+      });
+    };
     setQualityLevels([]);
     setQuality(-1);
+    video.addEventListener('playing', markPlaying);
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = playback.hls_url;
       video.addEventListener('loadedmetadata', restorePlayback, { once: true });
+      video.addEventListener('error', markNativeError);
       return () => {
         resumePosition.current = video.currentTime;
         shouldResumePlaying.current = !video.paused;
         video.removeEventListener('loadedmetadata', restorePlayback);
+        video.removeEventListener('error', markNativeError);
+        video.removeEventListener('playing', markPlaying);
         video.removeAttribute('src');
         video.load();
       };
     }
-    if (!Hls.isSupported()) return;
+    if (!Hls.isSupported()) {
+      setPlayerError({
+        title: 'This browser cannot play HLS video',
+        detail: 'Use a recent version of Chrome, Edge, Firefox or Safari.',
+      });
+      video.removeEventListener('playing', markPlaying);
+      return;
+    }
     const hls = new Hls({ enableWorker: true });
     hlsRef.current = hls;
     video.addEventListener('loadedmetadata', restorePlayback, { once: true });
     hls.loadSource(playback.hls_url);
     hls.attachMedia(video);
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      setPlayerError(null);
       const levels = hls.levels.map((level, index) => ({
         index,
         label: level.height ? `${level.height}p` : `${Math.round(level.bitrate / 1000)} kbps`,
@@ -76,10 +100,38 @@ export function DrovixaWebPlayer({ id, target }: Props) {
       setQualityLevels(levels);
       restorePlayback();
     });
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (!data.fatal) return;
+
+      if (data.type === ErrorTypes.NETWORK_ERROR && recoveryAttempts.current.network < 1) {
+        recoveryAttempts.current.network += 1;
+        window.setTimeout(() => {
+          if (hlsRef.current === hls) hls.startLoad();
+        }, 750);
+        return;
+      }
+
+      if (data.type === ErrorTypes.MEDIA_ERROR && recoveryAttempts.current.media < 1) {
+        recoveryAttempts.current.media += 1;
+        hls.recoverMediaError();
+        return;
+      }
+
+      const statusCode = data.response?.code;
+      const rejectedSecureUrl = statusCode === 401 || statusCode === 403;
+      setPlayerError({
+        title: rejectedSecureUrl ? 'Mux rejected the secure playback link' : 'Video playback failed',
+        detail: rejectedSecureUrl
+          ? 'The playback token or Mux signing key must be refreshed.'
+          : 'The video CDN could not be reached. Refresh the secure playback link and try again.',
+      });
+      hls.stopLoad();
+    });
     return () => {
       resumePosition.current = video.currentTime;
       shouldResumePlaying.current = !video.paused;
       video.removeEventListener('loadedmetadata', restorePlayback);
+      video.removeEventListener('playing', markPlaying);
       hlsRef.current = null;
       hls.destroy();
     };
@@ -131,6 +183,12 @@ export function DrovixaWebPlayer({ id, target }: Props) {
     if (hlsRef.current) hlsRef.current.currentLevel = value;
   };
 
+  const retryPlayback = () => {
+    setPlayerError(null);
+    recoveryAttempts.current = { network: 0, media: 0 };
+    void grant.refetch();
+  };
+
   if (grant.isPending) {
     return <PlayerState title="Authorizing secure playback…" />;
   }
@@ -143,7 +201,14 @@ export function DrovixaWebPlayer({ id, target }: Props) {
   return (
     <section className="w-full" aria-label="Drovixa video player">
       <div className="relative aspect-video overflow-hidden rounded-2xl bg-black shadow-2xl">
-        <video ref={videoRef} className="h-full w-full" controls playsInline preload="metadata">
+        <video
+          ref={videoRef}
+          className="h-full w-full"
+          controls
+          crossOrigin="anonymous"
+          playsInline
+          preload="metadata"
+        >
           {grant.data.subtitles
             .filter((subtitle) => subtitle.format === 'vtt')
             .map((subtitle) => (
@@ -157,6 +222,19 @@ export function DrovixaWebPlayer({ id, target }: Props) {
               />
             ))}
         </video>
+        {playerError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 px-6 text-center">
+            <p className="text-lg font-semibold text-white">{playerError.title}</p>
+            <p className="mt-2 max-w-lg text-sm text-[var(--muted)]">{playerError.detail}</p>
+            <button
+              type="button"
+              className="mt-5 rounded-full bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+              onClick={retryPlayback}
+            >
+              Retry secure playback
+            </button>
+          </div>
+        )}
       </div>
       {qualityLevels.length > 0 && (
         <label className="mt-4 flex items-center justify-end gap-3 text-sm text-[var(--muted)]">
