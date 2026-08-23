@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { Badge, PageHeading, QueryState } from '@/components/ui';
@@ -20,6 +21,7 @@ type ContentRow = {
 };
 
 export default function ContentPage() {
+  const router = useRouter();
   const client = useQueryClient();
   const [type, setType] = useState<'series' | 'movies'>('series');
   const [title, setTitle] = useState('');
@@ -30,12 +32,12 @@ export default function ContentPage() {
   const refresh = () => client.invalidateQueries({ queryKey: ['admin-content'] });
   const create = useMutation({
     mutationFn: () =>
-      apiRequest(`/${type}`, { method: 'POST', body: JSON.stringify({ title }) }),
-    onSuccess: () => { setTitle(''); refresh(); },
-  });
-  const publish = useMutation({
-    mutationFn: (id: string) => apiRequest(`/${type}/${id}/publish`, { method: 'POST' }),
-    onSuccess: refresh,
+      apiRequest<ContentRow>(`/${type}`, { method: 'POST', body: JSON.stringify({ title }) }),
+    onSuccess: (response) => {
+      setTitle('');
+      refresh();
+      router.push(`/content/${type}/${response.data.id}`);
+    },
   });
   const archive = useMutation({
     mutationFn: (id: string) => apiRequest(`/${type}/${id}`, { method: 'DELETE' }),
@@ -47,7 +49,7 @@ export default function ContentPage() {
       <PageHeading
         eyebrow="Catalog studio"
         title="Content"
-        description="Create, publish and monitor series and movies. Every critical action is audited."
+        description="Create a draft, then open Content Studio to add artwork, videos, seasons and episodes before publishing."
       />
       <section className="panel">
         <div className="toolbar">
@@ -57,7 +59,7 @@ export default function ContentPage() {
           <input className="field" placeholder={`New ${type === 'series' ? 'series' : 'movie'} title`} value={title} onChange={(event) => setTitle(event.target.value)} />
           <button className="button button-primary" disabled={title.trim().length < 1 || create.isPending} onClick={() => create.mutate()}>Create draft</button>
         </div>
-        {create.error || publish.error || archive.error ? <div className="notice">{(create.error ?? publish.error ?? archive.error)?.message}</div> : null}
+        {create.error || archive.error ? <div className="notice">{(create.error ?? archive.error)?.message}</div> : null}
         <QueryState loading={query.isLoading} error={query.error} empty={query.data?.length === 0}>
           <div className="table-wrap">
             <table className="data-table">
@@ -71,7 +73,7 @@ export default function ContentPage() {
                     <td><Badge tone={row.premium ? 'accent' : ''}>{row.premium ? 'premium' : row.visibility}</Badge></td>
                     <td>{formatDate(row.published_at)}</td>
                     <td><div className="actions">
-                      {row.status !== 'published' ? <button className="button button-primary" onClick={() => publish.mutate(row.id)}>Publish</button> : null}
+                      <button className="button button-accent" onClick={() => router.push(`/content/${type}/${row.id}`)}>Edit &amp; upload</button>
                       <button className="button button-danger" onClick={() => window.confirm(`Archive ${row.title}?`) && archive.mutate(row.id)}>Archive</button>
                     </div></td>
                   </tr>
