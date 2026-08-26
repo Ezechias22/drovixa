@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     API_V1_PREFIX: str = "/api/v1"
     LOG_LEVEL: str = "INFO"
-    RELEASE: str = "drovixa@0.9.0"
+    RELEASE: str = "drovixa@0.12.0"
     BACKEND_CORS_ORIGINS: list[str] = Field(default_factory=list)
     TRUSTED_HOSTS: list[str] = Field(default_factory=lambda: ["localhost", "127.0.0.1"])
     TRUST_PROXY_HEADERS: bool = False

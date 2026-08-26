@@ -74,7 +74,7 @@ services:
     env_file: .env
     environment:
       SERVICE_ROLE: scheduler
-    command: celery -A app.workers.celery_app:celery_app beat --loglevel=INFO
+    command: celery -A app.workers.celery_app:celery_app beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule --pidfile=/tmp/celerybeat.pid
     depends_on:
       postgres:
         condition: service_healthy

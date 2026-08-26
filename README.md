@@ -10,6 +10,9 @@ notifications and Render deployment**, **Phase 10 profiles, Kids mode, ratings,
 secure downloads, casting, and device playback**, and **Phase 11 server-issued
 ads, daily coin streaks, referral rewards, verified Google/Apple identity
 exchange, Watch Party rooms, and growth automations**.
+Phase 12 closes the planned implementation roadmap with guarded production
+release gates, signed-store-build controls, backup/restore drills, public smoke
+monitoring, incident/rollback runbooks, and legal/store-submission templates.
 
 ## Repository map
 
@@ -99,6 +102,11 @@ referral rewards backed by the wallet ledger, verified Google and Apple token
 exchange, synchronized Watch Party state and chat, and event-driven growth
 notifications. The Admin dashboard exposes acquisition and engagement signals.
 
+Phase 12 standardizes release `0.12.0`, prevents production mobile builds from
+using local or insecure API URLs, separates preview APKs from production AABs,
+adds confirmed CI/store gates, validates Neon backups, monitors the deployed
+surfaces, and documents the final legal, security, recovery, and store duties.
+
 The registration route enforces `registration_enabled` on the server. Later
 modules must use the same dependency pattern so disabling a module removes its
 client UI and also closes its API entrypoints.
@@ -116,13 +124,14 @@ curl http://localhost:8000/api/v1/health/ready
 Open the independent Admin Dashboard at `http://localhost:3001` and sign in with
 the super-administrator account stored in `.env`.
 
-Install and verify the Phase 11 clients:
+Install and verify the Phase 12 release candidate:
 
 ```bash
 npm install
 npm run typecheck:clients
 npm run build --workspace @drovixa/web
 npm run build --workspace @drovixa/admin
+# Windows: .\scripts\verify-phase12.ps1
 ```
 
 API documentation is available at `http://localhost:8000/docs` outside the
@@ -223,6 +232,7 @@ a Secure, HttpOnly, SameSite cookie. The API never stores the raw refresh token.
 - Remote push notifications require an EAS development/production build on
   Android; current Expo Go clients cannot exercise native remote push delivery.
 
-See `docs/PHASE_11.md`, `docs/RENDER_FIREBASE_SETUP.md`, `docs/OPERATIONS.md`, and
-`docs/RELEASE_CHECKLIST.md` for production responsibilities and release gates.
+See `docs/PHASE_12.md`, `docs/store/RELEASE_CHECKLIST.md`,
+`docs/RENDER_FIREBASE_SETUP.md`, and `docs/OPERATIONS.md` for production
+responsibilities and release gates.
 Mux provisioning and webhook details remain in `docs/PHASE_3_1_MUX.md`.

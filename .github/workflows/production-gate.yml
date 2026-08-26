@@ -1,0 +1,102 @@
+name: Production Release Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, for example 0.12.0
+        required: true
+        default: 0.12.0
+      confirm:
+        description: Type RELEASE DROVIXA
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drovixa-production-gate
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    if: ${{ inputs.confirm == 'RELEASE DROVIXA' }}
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      APP_ENV: testing
+      DATABASE_URL: postgresql+asyncpg://drovixa:drovixa_ci_password@localhost:5432/drovixa_ci
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci-jwt-secret-that-is-long-enough-123456789
+      REFRESH_SECRET: ci-refresh-secret-that-is-different-987654321
+      EXPO_NO_TELEMETRY: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+      EXPO_PUBLIC_API_URL: ${{ vars.PRODUCTION_API_URL }}
+      EXPO_PUBLIC_APP_ENV: production
+      NEXT_PUBLIC_API_URL: ${{ vars.PRODUCTION_API_URL }}
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: drovixa_ci
+          POSTGRES_USER: drovixa
+          POSTGRES_PASSWORD: drovixa_ci_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U drovixa -d drovixa_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate release input and public API URL
+        shell: bash
+        run: |
+          test "${{ inputs.version }}" = "0.12.0"
+          test -n "$EXPO_PUBLIC_API_URL"
+          case "$EXPO_PUBLIC_API_URL" in https://*) ;; *) exit 1 ;; esac
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Backend release gate
+        working-directory: backend
+        run: |
+          pip install -r requirements-dev.txt
+          ruff check app tests migrations
+          mypy app
+          pytest -q -o addopts='' -W error --cov=app --cov-fail-under=65
+          alembic upgrade head
+          alembic check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Client release gate
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck:clients
+          npm run build:clients
+          npm exec --workspace @drovixa/mobile -- expo config --type public
+      - name: Build production containers
+        run: |
+          docker build -f backend/Dockerfile -t drovixa-backend:${{ inputs.version }} .
+          docker build -f web/Dockerfile -t drovixa-web:${{ inputs.version }} .
+          docker build -f admin/Dockerfile -t drovixa-admin:${{ inputs.version }} .
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+      - name: Gate summary
+        run: |
+          echo "Drovixa ${{ inputs.version }} passed the source release gate." >> "$GITHUB_STEP_SUMMARY"
+          echo "A production backup, public smoke test, device acceptance test, and store approvals are still required." >> "$GITHUB_STEP_SUMMARY"

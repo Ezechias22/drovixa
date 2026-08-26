@@ -20,3 +20,7 @@ GoogleService-Info.plist
 *firebase*service-account*.json
 *.tsbuildinfo
 coverage/
+.env.*
+!.env.example
+!**/.env.example
+!**/.env.*.example

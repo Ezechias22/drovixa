@@ -1,0 +1,37 @@
+name: Production Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 10 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  public-surfaces:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate production variables
+        shell: pwsh
+        env:
+          API_ORIGIN: ${{ vars.PRODUCTION_API_ORIGIN }}
+          APP_ORIGIN: ${{ vars.PRODUCTION_APP_ORIGIN }}
+          ADMIN_ORIGIN: ${{ vars.PRODUCTION_ADMIN_ORIGIN }}
+        run: |
+          if (-not $env:API_ORIGIN -or -not $env:APP_ORIGIN -or -not $env:ADMIN_ORIGIN) {
+              throw "Configure the three PRODUCTION_*_ORIGIN repository variables."
+          }
+      - name: Run public smoke tests
+        shell: pwsh
+        env:
+          API_ORIGIN: ${{ vars.PRODUCTION_API_ORIGIN }}
+          APP_ORIGIN: ${{ vars.PRODUCTION_APP_ORIGIN }}
+          ADMIN_ORIGIN: ${{ vars.PRODUCTION_ADMIN_ORIGIN }}
+        run: |
+          & ".\ops\smoke\production-smoke.ps1" `
+              -ApiOrigin $env:API_ORIGIN `
+              -AppOrigin $env:APP_ORIGIN `
+              -AdminOrigin $env:ADMIN_ORIGIN `
+              -ExpectedVersion "0.12.0"

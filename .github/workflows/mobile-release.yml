@@ -12,12 +12,20 @@ on:
         description: Submit after build
         type: boolean
         default: false
+      confirm:
+        description: Type BUILD DROVIXA MOBILE
+        required: true
 
 permissions:
   contents: read
 
+concurrency:
+  group: drovixa-mobile-production
+  cancel-in-progress: false
+
 jobs:
   eas:
+    if: ${{ inputs.confirm == 'BUILD DROVIXA MOBILE' }}
     runs-on: ubuntu-latest
     environment: mobile-production
     steps:
@@ -26,7 +34,16 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
+      - name: Verify mobile release candidate
+        env:
+          EXPO_PUBLIC_API_URL: ${{ vars.PRODUCTION_API_URL }}
+          EXPO_PUBLIC_APP_ENV: production
+          EXPO_NO_TELEMETRY: "1"
+        run: |
+          test -n "$EXPO_PUBLIC_API_URL"
+          npm run typecheck --workspace @drovixa/mobile
+          npm exec --workspace @drovixa/mobile -- expo config --type public
       - uses: expo/expo-github-action@v8
         with:
           eas-version: latest
