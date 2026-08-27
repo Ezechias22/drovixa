@@ -109,6 +109,10 @@ class MuxVideoProvider(VideoProvider):
             "playback_policies": ["signed" if signed else "public"],
             "video_quality": self.settings.MUX_VIDEO_QUALITY,
             "max_resolution_tier": self.settings.MUX_MAX_RESOLUTION_TIER,
+            # Prepare the exact MP4 rendition used by the mobile offline flow
+            # while Mux is processing the asset. This avoids making the first
+            # viewer wait for an on-demand rendition job.
+            "static_renditions": [{"resolution": "720p"}],
             "meta": {"title": title},
         }
         if creator_id:

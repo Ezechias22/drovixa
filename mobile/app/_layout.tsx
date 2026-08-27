@@ -5,7 +5,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AnimatedDrovixaSplash } from '@/components/AnimatedDrovixaSplash';
+import { useI18n, useLanguageStore } from '@/i18n';
 import { useAuthStore } from '@/stores/auth-store';
+import { usePlaybackStore } from '@/stores/playback-store';
 import { useProfileStore } from '@/stores/profile-store';
 import { PushNotificationsBridge } from '@/services/push-notifications';
 import { colors } from '@/theme';
@@ -20,10 +22,15 @@ Sentry.init({
 });
 
 function RootLayout() {
+  const { t } = useI18n();
   const hydrated = useAuthStore((state) => state.hydrated);
   const hydrate = useAuthStore((state) => state.hydrate);
   const profileHydrated = useProfileStore((state) => state.hydrated);
   const hydrateProfile = useProfileStore((state) => state.hydrate);
+  const languageHydrated = useLanguageStore((state) => state.hydrated);
+  const hydrateLanguage = useLanguageStore((state) => state.hydrate);
+  const playbackHydrated = usePlaybackStore((state) => state.hydrated);
+  const hydratePlayback = usePlaybackStore((state) => state.hydrate);
   const [introComplete, setIntroComplete] = useState(false);
   const [client] = useState(
     () =>
@@ -38,11 +45,13 @@ function RootLayout() {
   useEffect(() => {
     void hydrate();
     void hydrateProfile();
-  }, [hydrate, hydrateProfile]);
+    void hydrateLanguage();
+    void hydratePlayback();
+  }, [hydrate, hydrateLanguage, hydratePlayback, hydrateProfile]);
 
   const finishIntro = useCallback(() => setIntroComplete(true), []);
 
-  if (!hydrated || !profileHydrated || !introComplete) {
+  if (!hydrated || !profileHydrated || !languageHydrated || !playbackHydrated || !introComplete) {
     return <AnimatedDrovixaSplash onFinished={finishIntro} />;
   }
 
@@ -61,11 +70,15 @@ function RootLayout() {
         >
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="search" options={{ title: 'Search' }} />
-          <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
-          <Stack.Screen name="profiles" options={{ title: 'Profiles' }} />
-          <Stack.Screen name="devices" options={{ title: 'Devices' }} />
-          <Stack.Screen name="downloads" options={{ title: 'Downloads' }} />
+          <Stack.Screen name="search" options={{ title: t('discover.search') }} />
+          <Stack.Screen name="notifications" options={{ title: t('profile.notifications') }} />
+          <Stack.Screen name="profiles" options={{ title: t('profile.profiles') }} />
+          <Stack.Screen name="devices" options={{ title: t('profile.devices') }} />
+          <Stack.Screen name="downloads" options={{ title: t('profile.downloads') }} />
+          <Stack.Screen name="language" options={{ title: t('language.title') }} />
+          <Stack.Screen name="playback-settings" options={{ title: t('playback.title') }} />
+          <Stack.Screen name="security" options={{ title: t('security.title') }} />
+          <Stack.Screen name="help" options={{ title: t('help.title') }} />
           <Stack.Screen name="growth" options={{ title: 'Rewards & referrals' }} />
           <Stack.Screen name="watch-party/[code]" options={{ title: 'Watch Party' }} />
           <Stack.Screen name="offline/[id]" options={{ title: 'Offline playback' }} />

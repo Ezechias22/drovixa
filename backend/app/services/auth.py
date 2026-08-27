@@ -26,7 +26,7 @@ from app.models.monetization import Wallet
 from app.models.rbac import Role
 from app.models.user import User
 from app.repositories.users import get_role_by_name, get_user_by_email
-from app.schemas.auth import DeviceInput, LoginInput, RegisterInput
+from app.schemas.auth import ChangePasswordInput, DeviceInput, LoginInput, RegisterInput
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +123,27 @@ async def login_user(
     )
     await db.commit()
     return issued
+
+
+async def change_user_password(
+    db: AsyncSession,
+    user: User,
+    payload: ChangePasswordInput,
+) -> None:
+    if not verify_password(payload.current_password, user.password_hash):
+        raise AppError(
+            "INVALID_CURRENT_PASSWORD",
+            "The current password is incorrect.",
+            status_code=400,
+        )
+    if verify_password(payload.new_password, user.password_hash):
+        raise AppError(
+            "PASSWORD_UNCHANGED",
+            "The new password must be different from the current password.",
+            status_code=400,
+        )
+    user.password_hash = hash_password(payload.new_password)
+    await db.commit()
 
 
 async def _create_session_and_tokens(

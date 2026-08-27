@@ -138,6 +138,9 @@ async def test_mux_adapter_direct_upload_poll_and_signed_playback() -> None:
     assert upload.headers == {"Content-Type": "video/mp4"}
     assert captured_upload["new_asset_settings"]["playback_policies"] == ["signed"]
     assert captured_upload["new_asset_settings"]["video_quality"] == "basic"
+    assert captured_upload["new_asset_settings"]["static_renditions"] == [
+        {"resolution": "720p"}
+    ]
     assert (
         captured_upload["new_asset_settings"]["passthrough"]
         == "11111111-1111-1111-1111-111111111111"

@@ -1,7 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuthStore } from '@/stores/auth-store';
+import { useI18n } from '@/i18n';
 import { colors } from '@/theme';
 
 import { Brand } from './Brand';
@@ -9,6 +11,7 @@ import { Brand } from './Brand';
 export function PageHeader() {
   const router = useRouter();
   const session = useAuthStore((state) => state.session);
+  const { t } = useI18n();
 
   return (
     <View style={styles.row}>
@@ -20,7 +23,7 @@ export function PageHeader() {
           onPress={() => router.push('/search')}
           style={styles.iconButton}
         >
-          <Text style={styles.icon}>⌕</Text>
+          <Ionicons color={colors.text} name="search-outline" size={22} />
         </Pressable>
         {session ? (
           <Pressable
@@ -29,7 +32,7 @@ export function PageHeader() {
             onPress={() => router.push('/notifications')}
             style={styles.iconButton}
           >
-            <Text style={styles.icon}>◉</Text>
+            <Ionicons color={colors.text} name="notifications-outline" size={22} />
           </Pressable>
         ) : (
           <Pressable
@@ -37,7 +40,7 @@ export function PageHeader() {
             onPress={() => router.push('/login')}
             style={styles.signInButton}
           >
-            <Text style={styles.signInText}>Sign in</Text>
+            <Text style={styles.signInText}>{t('common.signIn')}</Text>
           </Pressable>
         )}
         <Pressable
@@ -46,9 +49,7 @@ export function PageHeader() {
           onPress={() => router.push('/(tabs)/profile')}
           style={styles.avatar}
         >
-          <Text style={styles.avatarText}>
-            {session?.user.name?.slice(0, 1).toUpperCase() ?? '◎'}
-          </Text>
+          <Ionicons color={colors.text} name="person-circle-outline" size={25} />
         </Pressable>
       </View>
     </View>
@@ -72,7 +73,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.card,
   },
-  icon: { color: colors.text, fontSize: 21 },
   signInButton: {
     minHeight: 38,
     justifyContent: 'center',
@@ -89,5 +89,4 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     backgroundColor: colors.cardSecondary,
   },
-  avatarText: { color: colors.text, fontSize: 16, fontWeight: '900' },
 });

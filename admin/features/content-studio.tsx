@@ -277,6 +277,85 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
     mutationFn: () => apiRequest<ContentDetail>(`/${kind}/${contentId}/publish`, { method: 'POST' }),
     onSuccess: () => { setNotice(`${kind === 'series' ? 'Series' : 'Movie'} published.`); refreshDetail(); },
   });
+  const quickPublish = useMutation({
+    mutationFn: async () => {
+      const assetId = kind === 'movies' ? form.video_asset_id : episodeForm.video_asset_id;
+      if (!assetId) throw new Error('Choose a video and wait until Mux marks it ready.');
+      if (!form.title.trim()) throw new Error('Title is required.');
+      const accessType = kind === 'movies' ? form.access_type : episodeForm.access_type;
+      const coinPrice = Number(kind === 'movies' ? form.coin_price : episodeForm.coin_price) || 0;
+      if (['coin_unlock', 'premium_or_coin'].includes(accessType) && coinPrice < 1) {
+        throw new Error('Coin price must be at least 1 for coin access.');
+      }
+
+      const common = {
+        title: form.title.trim(),
+        short_description: nullable(form.short_description),
+        description: nullable(form.description),
+        poster_url: nullable(form.poster_url),
+        backdrop_url: nullable(form.backdrop_url),
+        visibility: 'public',
+      };
+
+      if (kind === 'movies') {
+        await apiRequest(`/movies/${contentId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            ...common,
+            video_asset_id: assetId,
+            access_type: accessType,
+            coin_price: coinPrice,
+          }),
+        });
+        return apiRequest(`/movies/${contentId}/publish`, { method: 'POST' });
+      }
+
+      let season = seasons.data?.[0];
+      if (!season) {
+        season = (await apiRequest<Season>('/seasons', {
+          method: 'POST',
+          body: JSON.stringify({ series_id: contentId, season_number: 1, title: 'Season 1' }),
+        })).data;
+      }
+
+      let episode = episodes.data?.find((item) => item.video_asset?.id === assetId);
+      if (!episode) {
+        const episodeNumber = Math.max(0, ...(episodes.data ?? []).map((item) => item.episode_number)) + 1;
+        episode = (await apiRequest<Episode>('/episodes', {
+          method: 'POST',
+          body: JSON.stringify({
+            series_id: contentId,
+            season_id: season.id,
+            episode_number: episodeNumber,
+            title: episodeForm.title.trim() || `Episode ${episodeNumber}`,
+            description: nullable(episodeForm.description),
+            thumbnail_url: nullable(episodeForm.thumbnail_url),
+            video_asset_id: assetId,
+            orientation: episodeForm.orientation,
+            access_type: accessType,
+            coin_price: coinPrice,
+            premium: episodeForm.premium,
+          }),
+        })).data;
+      }
+
+      if (episode.status !== 'published') {
+        await apiRequest(`/episodes/${episode.id}/publish`, { method: 'POST' });
+      }
+      if (season.status !== 'published') {
+        await apiRequest(`/seasons/${season.id}/publish`, { method: 'POST' });
+      }
+      await apiRequest(`/series/${contentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ...common, series_status: 'ongoing' }),
+      });
+      return apiRequest(`/series/${contentId}/publish`, { method: 'POST' });
+    },
+    onSuccess: async () => {
+      setNotice('Published successfully. The title and video are now available to viewers.');
+      await Promise.all([refreshDetail(), refreshSeries(), refreshAssets()]);
+    },
+  });
   const attachMovieAsset = useMutation({
     mutationFn: (assetId: string) => apiRequest<ContentDetail>(`/movies/${contentId}`, {
       method: 'PATCH', body: JSON.stringify({ video_asset_id: assetId }),
@@ -342,7 +421,7 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
 
   const mutationError = save.error ?? publish.error ?? attachMovieAsset.error ?? createSeason.error
     ?? publishSeason.error ?? archiveSeason.error ?? createEpisode.error ?? publishEpisode.error
-    ?? archiveEpisode.error;
+    ?? archiveEpisode.error ?? quickPublish.error;
 
   const readyAssets = useMemo(
     () => assets.data?.filter((asset) => asset.status === 'ready') ?? [],
@@ -462,6 +541,35 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
             </div>
             {notice ? <div className="notice success studio-notice">{notice}</div> : null}
             {mutationError ? <div className="notice studio-notice">{mutationError.message}</div> : null}
+
+            <section className="panel quick-publish-panel">
+              <div className="panel-header">
+                <div>
+                  <h3>Quick publish</h3>
+                  <p>Choose a video, confirm the essentials, then publish with one button.</p>
+                </div>
+                <Badge tone={form.video_asset_id || episodeForm.video_asset_id ? 'success' : 'warning'}>
+                  {form.video_asset_id || episodeForm.video_asset_id ? 'video ready' : 'choose video'}
+                </Badge>
+              </div>
+              <div className="quick-publish-grid">
+                <div className="form-field"><label>Title *</label><input className="field" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></div>
+                {kind === 'series' ? <div className="form-field"><label>Episode title</label><input className="field" placeholder="Episode title" value={episodeForm.title} onChange={(event) => setEpisodeForm({ ...episodeForm, title: event.target.value })} /></div> : null}
+                <div className="form-field"><label>Poster URL (optional)</label><input className="field" type="url" placeholder="https://…" value={form.poster_url} onChange={(event) => setForm({ ...form, poster_url: event.target.value })} /></div>
+                <div className="form-field"><label>Access</label><select className="select" value={kind === 'movies' ? form.access_type : episodeForm.access_type} onChange={(event) => kind === 'movies' ? setForm({ ...form, access_type: event.target.value }) : setEpisodeForm({ ...episodeForm, access_type: event.target.value })}><option value="free">Free</option><option value="premium_subscription">Premium</option><option value="coin_unlock">Coins</option><option value="premium_or_coin">Premium or coins</option><option value="ad_unlock">Ad unlock</option></select></div>
+                <div className="form-field"><label>Coin price</label><input className="field" type="number" min="0" value={kind === 'movies' ? form.coin_price : episodeForm.coin_price} onChange={(event) => kind === 'movies' ? setForm({ ...form, coin_price: event.target.value }) : setEpisodeForm({ ...episodeForm, coin_price: event.target.value })} /></div>
+              </div>
+              <div className="quick-publish-actions">
+                <label className="button button-accent file-button">
+                  {uploadStatus || 'Choose video'}
+                  <input type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,video/x-m4v" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file); event.target.value = ''; }} />
+                </label>
+                {uploadStatus ? <div className="quick-progress"><div className="progress-track"><div className="progress-bar" style={{ width: `${uploadProgress}%` }} /></div><strong>{uploadProgress}%</strong></div> : null}
+                <button className="button button-primary" disabled={quickPublish.isPending || !(form.video_asset_id || episodeForm.video_asset_id)} onClick={() => quickPublish.mutate()}>{quickPublish.isPending ? 'Publishing…' : 'Publish now'}</button>
+              </div>
+              {uploadError ? <div className="notice">{uploadError}</div> : null}
+              <details className="advanced-toggle"><summary>Advanced settings</summary><p>Metadata, seasons, episode controls and existing video assets remain available below.</p></details>
+            </section>
 
             <section className="studio-layout">
               <article className="panel">

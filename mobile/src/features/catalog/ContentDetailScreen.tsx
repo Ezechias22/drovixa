@@ -7,6 +7,7 @@ import { CommentsPanel } from '@/features/community/CommentsPanel';
 import { setLike } from '@/features/community/api';
 import { getFeatureFlags } from '@/features/configuration/api';
 import { RatingControl } from '@/features/personalization/RatingControl';
+import { useI18n } from '@/i18n';
 import { useAuthStore } from '@/stores/auth-store';
 import { colors } from '@/theme';
 
@@ -14,6 +15,7 @@ import { getContentDetail, getEpisodes, toggleFavorite } from './api';
 import type { ContentDetail } from './types';
 
 export function ContentDetailScreen({ type, slug }: { type: 'series' | 'movie'; slug: string }) {
+  const { t } = useI18n();
   const router = useRouter();
   const queryClient = useQueryClient();
   const session = useAuthStore((state) => state.session);
@@ -67,7 +69,7 @@ export function ContentDetailScreen({ type, slug }: { type: 'series' | 'movie'; 
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <ImageBackground source={item.backdrop_url ? { uri: item.backdrop_url } : undefined} style={styles.hero}>
         <View style={styles.shade}>
-          <Text style={styles.badge}>{item.premium ? 'PREMIUM ORIGINAL' : item.type.toUpperCase()}</Text>
+          <Text style={styles.badge}>{item.premium ? 'PREMIUM ORIGINAL' : item.type === 'movie' ? t('content.movie').toUpperCase() : item.type.toUpperCase()}</Text>
           <Text style={styles.title}>{item.title}</Text>
           <Text style={styles.meta}>{item.release_date?.slice(0, 4) ?? 'New'} · {item.age_rating} · ★ {Number(item.rating).toFixed(1)}</Text>
         </View>
@@ -75,25 +77,25 @@ export function ContentDetailScreen({ type, slug }: { type: 'series' | 'movie'; 
       <View style={styles.body}>
         <Text style={styles.description}>{item.description ?? item.short_description}</Text>
         <View style={styles.actions}>
-          <Pressable onPress={play} style={styles.play}><Text style={styles.playText}>▶ Play</Text></Pressable>
+          <Pressable onPress={play} style={styles.play}><Text style={styles.playText}>▶ {t('content.play')}</Text></Pressable>
           <Pressable onPress={() => session ? favorite.mutate() : router.push('/login')} style={styles.actionPill}>
-            <Text style={styles.actionText}>{item.is_favorite ? '✓ Saved' : '+ My List'}</Text>
+            <Text style={styles.actionText}>{item.is_favorite ? `✓ ${t('content.saved')}` : `+ ${t('content.myList')}`}</Text>
           </Pressable>
           <Pressable onPress={() => session ? like.mutate() : router.push('/login')} style={styles.actionPill}>
             <Text style={[styles.actionText, item.is_liked && styles.likedText]}>{item.is_liked ? '♥' : '♡'} {item.like_count ?? 0}</Text>
           </Pressable>
         </View>
-        {item.genres.length ? <Text style={styles.small}>Genres · {item.genres.map((genre) => genre.name).join(' · ')}</Text> : null}
-        {item.cast.length ? <View style={styles.section}><Text style={styles.heading}>Cast</Text><Text style={styles.small}>{item.cast.map((credit) => `${credit.actor.name}${credit.character_name ? ` as ${credit.character_name}` : ''}`).join('  •  ')}</Text></View> : null}
+        {item.genres.length ? <Text style={styles.small}>{t('content.genres')} · {item.genres.map((genre) => genre.name).join(' · ')}</Text> : null}
+        {item.cast.length ? <View style={styles.section}><Text style={styles.heading}>{t('content.cast')}</Text><Text style={styles.small}>{item.cast.map((credit) => `${credit.actor.name}${credit.character_name ? ` · ${credit.character_name}` : ''}`).join('  •  ')}</Text></View> : null}
         {session && flags.data?.ratings_enabled?.enabled ? <RatingControl contentId={item.id} /> : null}
         {type === 'series' ? <View style={styles.section}>
-          <Text style={styles.heading}>Episodes</Text>
-          {episodes.isPending ? <LoadingState label="Loading episodes…" /> : episodes.data?.length ? episodes.data.map((episode) => (
+          <Text style={styles.heading}>{t('content.episodes')}</Text>
+          {episodes.isPending ? <LoadingState /> : episodes.data?.length ? episodes.data.map((episode) => (
             <Pressable key={episode.id} onPress={() => router.push({ pathname: '/watch/[id]', params: { id: episode.id, target: 'episode' } })} style={styles.episode}>
               <View><Text style={styles.episodeTitle}>{episode.episode_number}. {episode.title}</Text><Text style={styles.small}>{episode.duration_seconds ? `${Math.ceil(episode.duration_seconds / 60)} min` : episode.access_type}</Text></View>
               <Text style={styles.episodePlay}>▶</Text>
             </Pressable>
-          )) : <EmptyState title="No episodes yet" body="Published episodes will appear here." />}
+          )) : <EmptyState title={t('content.noEpisodes')} body={t('content.noEpisodesBody')} />}
         </View> : null}
         {flags.data?.comments_enabled?.enabled ? <CommentsPanel targetId={item.id} targetType="content" /> : null}
       </View>

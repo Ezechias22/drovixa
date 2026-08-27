@@ -44,10 +44,12 @@
     },
     "plugins": [
       "expo-router",
+      "expo-localization",
       "expo-secure-store",
       [
         "expo-notifications",
         {
+          "icon": "./assets/notification-icon.png",
           "color": "#FF4D8D",
           "defaultChannel": "drovixa_updates"
         }

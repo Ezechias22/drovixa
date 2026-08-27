@@ -5,40 +5,53 @@ import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from '
 import { CastButton, MediaStreamType, useCastDevice, useRemoteMediaClient } from 'react-native-google-cast';
 
 import { registerCast } from '@/features/personalization/api';
+import { useI18n } from '@/i18n';
 import { useAuthStore } from '@/stores/auth-store';
+import { usePlaybackStore } from '@/stores/playback-store';
 
 import { syncWatchProgress } from './api';
 import type { PlaybackGrant } from './types';
 
-type Props = { grant: PlaybackGrant };
+type Props = { grant: PlaybackGrant; onRetry?: () => void };
 
-export function DrovixaVideoPlayer({ grant }: Props) {
+export function DrovixaVideoPlayer({ grant, onRetry }: Props) {
+  const { t } = useI18n();
+  const autoplay = usePlaybackStore((state) => state.autoplay);
   const isAuthenticated = useAuthStore((state) => Boolean(state.session?.accessToken));
   const syncInFlight = useRef(false);
   const resumePosition = useRef(0);
-  const shouldPlay = useRef(true);
+  const shouldPlay = useRef(autoplay);
   const castClient = useRemoteMediaClient();
   const castDevice = useCastDevice();
   const castLoaded = useRef<string | null>(null);
   const [speed, setSpeed] = useState(1);
-  const player = useVideoPlayer(
-    { uri: grant.hls_url, contentType: 'hls' },
-    (instance) => {
-      instance.timeUpdateEventInterval = grant.progress_sync_interval_seconds;
-      instance.allowsExternalPlayback = true;
-      if (resumePosition.current > 0) instance.currentTime = resumePosition.current;
-      if (shouldPlay.current) instance.play();
-    },
-  );
-  const { status } = useEvent(player, 'statusChange', { status: player.status });
+  const player = useVideoPlayer(null, (instance) => {
+    instance.timeUpdateEventInterval = grant.progress_sync_interval_seconds;
+    instance.allowsExternalPlayback = true;
+  });
+  const { status, error } = useEvent(player, 'statusChange', { status: player.status });
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      await player.replaceAsync({ uri: grant.hls_url, contentType: 'hls' });
+      if (!active) return;
+      if (resumePosition.current > 0) player.currentTime = resumePosition.current;
+      if (shouldPlay.current) player.play();
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [grant.hls_url, player]);
 
   useEffect(() => {
     if (!castClient || !castDevice || castLoaded.current === grant.playback_session_id) return;
     castLoaded.current = grant.playback_session_id;
     player.pause();
     void castClient.loadMedia({
-      autoplay: true,
+      autoplay: shouldPlay.current,
       startTime: Math.max(0, resumePosition.current),
       mediaInfo: {
         contentUrl: grant.hls_url,
@@ -115,7 +128,15 @@ export function DrovixaVideoPlayer({ grant }: Props) {
       )}
       {status === 'error' && (
         <View style={styles.overlay}>
-          <Text style={styles.error}>Video playback failed. Please try again.</Text>
+          <Text style={styles.error}>{t('player.failed')}</Text>
+          <Text numberOfLines={3} style={styles.errorDetail}>
+            {error?.message ?? t('player.refresh')}
+          </Text>
+          {onRetry ? (
+            <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retryButton}>
+              <Text style={styles.buttonText}>{t('player.retry')}</Text>
+            </Pressable>
+          ) : null}
         </View>
       )}
       <View style={styles.quickControls}>
@@ -138,7 +159,7 @@ export function DrovixaVideoPlayer({ grant }: Props) {
           style={styles.primaryButton}
           onPress={() => (isPlaying ? player.pause() : player.play())}
         >
-          <Text style={styles.buttonText}>{isPlaying ? 'Pause' : 'Play'}</Text>
+          <Text style={styles.buttonText}>{isPlaying ? t('player.pause') : t('player.play')}</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -164,6 +185,14 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   error: { color: '#FFFFFF', textAlign: 'center' },
+  errorDetail: { color: '#C9CDD5', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  retryButton: {
+    marginTop: 12,
+    borderRadius: 20,
+    backgroundColor: '#FF3D71',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
   quickControls: {
     position: 'absolute',
     left: 16,

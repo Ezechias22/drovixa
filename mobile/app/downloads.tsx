@@ -5,9 +5,11 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { EmptyState, LoadingState } from '@/components/ScreenStates';
 import type { OfflineDownload } from '@/features/personalization/types';
 import { getOfflineDownloads, removeOfflineDownload } from '@/services/offline-downloads';
+import { useI18n } from '@/i18n';
 import { colors } from '@/theme';
 
 export default function DownloadsScreen() {
+  const { t } = useI18n();
   const router = useRouter();
   const queryClient = useQueryClient();
   const downloads = useQuery({ queryKey: ['offline-downloads'], queryFn: getOfflineDownloads });
@@ -15,22 +17,22 @@ export default function DownloadsScreen() {
     mutationFn: removeOfflineDownload,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['offline-downloads'] }),
   });
-  if (downloads.isPending) return <LoadingState label="Loading downloads…" />;
+  if (downloads.isPending) return <LoadingState />;
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.eyebrow}>OFFLINE & PRIVATE</Text>
-      <Text style={styles.title}>Downloads</Text>
-      <Text style={styles.muted}>Videos stay inside Drovixa's private app storage and stop playing when their license expires.</Text>
+      <Text style={styles.eyebrow}>{t('downloads.eyebrow')}</Text>
+      <Text style={styles.title}>{t('downloads.title')}</Text>
+      <Text style={styles.muted}>{t('downloads.subtitle')}</Text>
       {!downloads.data?.length ? (
-        <EmptyState title="No downloads yet" body="Use Download from a movie or episode player." />
+        <EmptyState title={t('downloads.emptyTitle')} body={t('downloads.emptyBody')} />
       ) : downloads.data.map((item) => (
         <DownloadRow
           key={item.id}
           item={item}
           onPlay={() => router.push({ pathname: '/offline/[id]', params: { id: item.id } })}
-          onRemove={() => Alert.alert('Delete download?', item.title, [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete', style: 'destructive', onPress: () => remove.mutate(item) },
+          onRemove={() => Alert.alert(t('downloads.deleteTitle'), item.title, [
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('common.delete'), style: 'destructive', onPress: () => remove.mutate(item) },
           ])}
         />
       ))}
@@ -39,6 +41,7 @@ export default function DownloadsScreen() {
 }
 
 function DownloadRow({ item, onPlay, onRemove }: { item: OfflineDownload; onPlay: () => void; onRemove: () => void }) {
+  const { locale, t } = useI18n();
   const expired = Date.parse(item.expiresAt) <= Date.now();
   return (
     <View style={styles.card}>
@@ -46,10 +49,10 @@ function DownloadRow({ item, onPlay, onRemove }: { item: OfflineDownload; onPlay
         <Text style={styles.name}>{item.title}</Text>
         <Text style={styles.muted}>{item.quality} · {(item.bytes / 1024 / 1024).toFixed(1)} MB</Text>
         <Text style={expired ? styles.expired : styles.valid}>
-          {expired ? 'LICENSE EXPIRED' : `VALID UNTIL ${new Date(item.expiresAt).toLocaleString()}`}
+          {expired ? t('downloads.expired') : t('downloads.validUntil', { date: new Date(item.expiresAt).toLocaleString(locale) })}
         </Text>
       </Pressable>
-      <Pressable onPress={onRemove}><Text style={styles.remove}>Delete</Text></Pressable>
+      <Pressable onPress={onRemove}><Text style={styles.remove}>{t('common.delete')}</Text></Pressable>
     </View>
   );
 }

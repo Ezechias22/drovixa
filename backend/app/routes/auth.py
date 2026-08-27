@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, Request, status
 from app.api.deps import CurrentContext, DbSession, require_feature_enabled
 from app.core.network import forwarded_for
 from app.core.rate_limit import rate_limit
-from app.schemas.auth import LoginInput, RefreshInput, RegisterInput
+from app.schemas.auth import ChangePasswordInput, LoginInput, RefreshInput, RegisterInput
 from app.schemas.common import success
 from app.schemas.user import UserOut
 from app.services.auth import (
     IssuedTokens,
+    change_user_password,
     login_user,
     register_user,
     revoke_all_user_sessions,
@@ -94,3 +95,16 @@ async def logout_all(context: CurrentContext, db: DbSession) -> dict[str, Any]:
     await revoke_all_user_sessions(db, context.user.id, reason="user_logout_all")
     await db.commit()
     return success({"logged_out": True, "all_devices": True})
+
+
+@router.post(
+    "/change-password",
+    dependencies=[Depends(rate_limit("change-password", requests=5, window_seconds=900))],
+)
+async def change_password(
+    payload: ChangePasswordInput,
+    context: CurrentContext,
+    db: DbSession,
+) -> dict[str, Any]:
+    await change_user_password(db, context.user, payload)
+    return success({"password_changed": True})

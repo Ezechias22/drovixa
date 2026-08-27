@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
+import axios from 'axios';
 
 import { apiClient } from '@/api/client';
 import type {
@@ -10,6 +11,45 @@ import type {
 
 const DIRECTORY = `${FileSystem.documentDirectory}drovixa-downloads/`;
 const INDEX = `${DIRECTORY}index.json`;
+const PREPARATION_ATTEMPTS = 36;
+const PREPARATION_DELAY_MS = 5_000;
+
+export type DownloadProgress =
+  | { phase: 'preparing'; percent: number }
+  | { phase: 'downloading'; percent: number }
+  | { phase: 'saving'; percent: 100 };
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function apiErrorCode(error: unknown): string | null {
+  if (!axios.isAxiosError(error)) return null;
+  return error.response?.data?.error?.code ?? null;
+}
+
+async function authorizeWithPreparationRetry(
+  path: string,
+  onProgress?: (progress: DownloadProgress) => void,
+): Promise<DownloadGrant> {
+  for (let attempt = 0; attempt < PREPARATION_ATTEMPTS; attempt += 1) {
+    try {
+      return (
+        await apiClient.post<ApiEnvelope<DownloadGrant>>(path, { quality: '720p' })
+      ).data.data;
+    } catch (error) {
+      if (apiErrorCode(error) !== 'DOWNLOAD_PREPARING' || attempt === PREPARATION_ATTEMPTS - 1) {
+        throw error;
+      }
+      onProgress?.({
+        phase: 'preparing',
+        percent: Math.min(95, Math.round(((attempt + 1) / PREPARATION_ATTEMPTS) * 100)),
+      });
+      await delay(PREPARATION_DELAY_MS);
+    }
+  }
+  throw new Error('The offline video could not be prepared.');
+}
 
 async function readIndex(): Promise<OfflineDownload[]> {
   const info = await FileSystem.getInfoAsync(INDEX);
@@ -41,19 +81,31 @@ export async function downloadForOffline(input: {
   target: 'episode' | 'movie';
   title: string;
   posterUrl: string | null;
+  onProgress?: (progress: DownloadProgress) => void;
 }): Promise<OfflineDownload> {
   const path =
     input.target === 'movie'
       ? `/downloads/movies/${input.id}/authorize`
       : `/downloads/episodes/${input.id}/authorize`;
-  const grant = (
-    await apiClient.post<ApiEnvelope<DownloadGrant>>(path, { quality: '720p' })
-  ).data.data;
+  input.onProgress?.({ phase: 'preparing', percent: 0 });
+  const grant = await authorizeWithPreparationRetry(path, input.onProgress);
   await FileSystem.makeDirectoryAsync(DIRECTORY, { intermediates: true });
   const localUri = `${DIRECTORY}${grant.id}.mp4`;
   await apiClient.patch(`/downloads/${grant.id}`, { status: 'downloading', bytes_downloaded: 0 });
   try {
-    const result = await FileSystem.downloadAsync(grant.download_url, localUri);
+    const resumable = FileSystem.createDownloadResumable(
+      grant.download_url,
+      localUri,
+      {},
+      ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+        const percent = totalBytesExpectedToWrite > 0
+          ? Math.min(100, Math.round((totalBytesWritten / totalBytesExpectedToWrite) * 100))
+          : 0;
+        input.onProgress?.({ phase: 'downloading', percent });
+      },
+    );
+    const result = await resumable.downloadAsync();
+    if (!result?.uri) throw new Error('The video download did not produce a local file.');
     const info = await FileSystem.getInfoAsync(result.uri);
     const bytes = info.exists && 'size' in info ? info.size : 0;
     const item: OfflineDownload = {
@@ -68,6 +120,7 @@ export async function downloadForOffline(input: {
       bytes,
     };
     await SecureStore.setItemAsync(`drovixa.download.${grant.id}`, grant.license_token);
+    input.onProgress?.({ phase: 'saving', percent: 100 });
     const items = (await readIndex()).filter((entry) => entry.id !== item.id);
     await writeIndex([item, ...items]);
     await apiClient.patch(`/downloads/${grant.id}`, {

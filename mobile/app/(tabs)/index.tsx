@@ -1,2 +1,69 @@
-import{useQuery}from'@tanstack/react-query';import{useRouter}from'expo-router';import{FlatList,ImageBackground,Pressable,ScrollView,StyleSheet,Text,View}from'react-native';import{useSafeAreaInsets}from'react-native-safe-area-context';import{ContentCard}from'@/components/ContentCard';import{PageHeader}from'@/components/PageHeader';import{EmptyState,ErrorState,LoadingState}from'@/components/ScreenStates';import{getHome}from'@/features/catalog/api';import{AdCard}from'@/features/growth/AdCard';import{colors}from'@/theme';
-export default function Home(){const inset=useSafeAreaInsets(),r=useRouter(),q=useQuery({queryKey:['home'],queryFn:getHome});if(q.isPending)return <LoadingState label="Preparing your home…"/>;if(q.isError)return <ErrorState retry={()=>void q.refetch()}/>;const hero=q.data.hero[0];return <ScrollView style={s.screen} contentContainerStyle={s.content}><View style={{paddingTop:inset.top}}><PageHeader/></View>{hero&&<ImageBackground source={hero.backdrop_url?{uri:hero.backdrop_url}:undefined} style={s.hero} imageStyle={s.heroImage}><View style={s.shade}><Text style={s.premium}>{hero.premium?'DROVIXA ORIGINAL':'FEATURED'}</Text><Text style={s.heroTitle}>{hero.title}</Text><Text numberOfLines={3} style={s.desc}>{hero.short_description}</Text><View style={s.actions}><Pressable onPress={()=>r.push({pathname:hero.type==='series'?'/series/[slug]':'/movie/[slug]',params:{slug:hero.slug}})} style={s.primary}><Text style={s.primaryText}>▶ Watch now</Text></Pressable><Pressable onPress={()=>r.push({pathname:hero.type==='series'?'/series/[slug]':'/movie/[slug]',params:{slug:hero.slug}})} style={s.secondary}><Text style={s.secondaryText}>More info</Text></Pressable></View></View></ImageBackground>}<View style={s.sections}><AdCard/>{q.data.sections.map(section=><View key={section.id} style={s.section}><Text style={s.sectionTitle}>{section.title}</Text><FlatList data={section.items} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.row} keyExtractor={x=>'content'in x?x.progress.id:x.id} renderItem={({item,index})=><ContentCard item={item} rank={section.presentation==='ranked'?index+1:undefined}/>} /></View>)}{!hero&&!q.data.sections.length&&<EmptyState title="Catalog connected" body="Published content will appear here automatically."/>}</View></ScrollView>}const s=StyleSheet.create({screen:{flex:1,backgroundColor:colors.background},content:{paddingBottom:36},hero:{height:510,marginHorizontal:14,borderRadius:26,overflow:'hidden',backgroundColor:colors.card},heroImage:{borderRadius:26},shade:{flex:1,justifyContent:'flex-end',gap:10,padding:22,backgroundColor:'#08090b55'},premium:{color:colors.accent,fontSize:10,fontWeight:'900',letterSpacing:1.5},heroTitle:{color:colors.text,fontSize:36,lineHeight:40,fontWeight:'900'},desc:{color:'#ddd',fontSize:14,lineHeight:20},actions:{flexDirection:'row',gap:10,marginTop:8},primary:{backgroundColor:colors.text,borderRadius:99,padding:13},primaryText:{color:colors.background,fontWeight:'900'},secondary:{backgroundColor:'#ffffff22',borderRadius:99,padding:13},secondaryText:{color:colors.text,fontWeight:'800'},sections:{paddingTop:28,gap:30},section:{gap:12},sectionTitle:{color:colors.text,fontSize:20,fontWeight:'900',paddingHorizontal:18},row:{gap:12,paddingHorizontal:18}});
+import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
+import { FlatList, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { ContentCard } from '@/components/ContentCard';
+import { PageHeader } from '@/components/PageHeader';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ScreenStates';
+import { getHome } from '@/features/catalog/api';
+import { AdCard } from '@/features/growth/AdCard';
+import { useI18n } from '@/i18n';
+import { colors } from '@/theme';
+
+export default function Home() {
+  const { t } = useI18n();
+  const inset = useSafeAreaInsets();
+  const router = useRouter();
+  const home = useQuery({ queryKey: ['home'], queryFn: getHome });
+  if (home.isPending) return <LoadingState />;
+  if (home.isError) return <ErrorState retry={() => void home.refetch()} />;
+  const hero = home.data.hero[0];
+  const openHero = () => hero && router.push({
+    pathname: hero.type === 'series' ? '/series/[slug]' : '/movie/[slug]',
+    params: { slug: hero.slug },
+  });
+  return (
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <View style={{ paddingTop: inset.top }}><PageHeader /></View>
+      {hero ? (
+        <ImageBackground source={hero.backdrop_url ? { uri: hero.backdrop_url } : undefined} style={styles.hero} imageStyle={styles.heroImage}>
+          <View style={styles.shade}>
+            <Text style={styles.premium}>{hero.premium ? t('home.original') : t('home.featured')}</Text>
+            <Text style={styles.heroTitle}>{hero.title}</Text>
+            <Text numberOfLines={3} style={styles.description}>{hero.short_description}</Text>
+            <View style={styles.actions}>
+              <Pressable onPress={openHero} style={styles.primary}><Text style={styles.primaryText}>▶ {t('home.watch')}</Text></Pressable>
+              <Pressable onPress={openHero} style={styles.secondary}><Text style={styles.secondaryText}>{t('home.more')}</Text></Pressable>
+            </View>
+          </View>
+        </ImageBackground>
+      ) : null}
+      <View style={styles.sections}>
+        <AdCard />
+        {home.data.sections.map((section) => (
+          <View key={section.id} style={styles.section}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            <FlatList
+              contentContainerStyle={styles.row}
+              data={section.items}
+              horizontal
+              keyExtractor={(item) => 'content' in item ? item.progress.id : item.id}
+              renderItem={({ item, index }) => <ContentCard item={item} rank={section.presentation === 'ranked' ? index + 1 : undefined} />}
+              showsHorizontalScrollIndicator={false}
+            />
+          </View>
+        ))}
+        {!hero && !home.data.sections.length ? <EmptyState title={t('home.emptyTitle')} body={t('home.emptyBody')} /> : null}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background }, content: { paddingBottom: 36 },
+  hero: { height: 510, marginHorizontal: 14, borderRadius: 26, overflow: 'hidden', backgroundColor: colors.card }, heroImage: { borderRadius: 26 }, shade: { flex: 1, justifyContent: 'flex-end', gap: 10, padding: 22, backgroundColor: '#08090b55' },
+  premium: { color: colors.accent, fontSize: 10, fontWeight: '900', letterSpacing: 1.5 }, heroTitle: { color: colors.text, fontSize: 36, lineHeight: 40, fontWeight: '900' }, description: { color: '#ddd', fontSize: 14, lineHeight: 20 },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 8 }, primary: { backgroundColor: colors.text, borderRadius: 99, padding: 13 }, primaryText: { color: colors.background, fontWeight: '900' }, secondary: { backgroundColor: '#ffffff22', borderRadius: 99, padding: 13 }, secondaryText: { color: colors.text, fontWeight: '800' },
+  sections: { paddingTop: 28, gap: 30 }, section: { gap: 12 }, sectionTitle: { color: colors.text, fontSize: 20, fontWeight: '900', paddingHorizontal: 18 }, row: { gap: 12, paddingHorizontal: 18 },
+});

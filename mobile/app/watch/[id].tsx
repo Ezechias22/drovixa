@@ -11,13 +11,16 @@ import { DrovixaVideoPlayer } from '@/features/player/DrovixaVideoPlayer';
 import { authorizePlayback, playbackRefreshInterval } from '@/features/player/api';
 import type { PlaybackTarget } from '@/features/player/types';
 import { getOrCreateDeviceId } from '@/services/device';
-import { downloadForOffline } from '@/services/offline-downloads';
+import { downloadForOffline, type DownloadProgress } from '@/services/offline-downloads';
+import { useI18n } from '@/i18n';
 import { useAuthStore } from '@/stores/auth-store';
 
 export default function WatchScreen() {
+  const { t } = useI18n();
   const params = useLocalSearchParams<{ id: string; type?: string; target?: string }>();
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const session = useAuthStore((state) => state.session);
   const router = useRouter();
   const target: PlaybackTarget = params.target === 'movie' || params.type === 'movie' ? 'movie' : 'episode';
@@ -40,9 +43,14 @@ export default function WatchScreen() {
       target,
       title: grant.data!.title,
       posterUrl: grant.data!.poster_url,
+      onProgress: setDownloadProgress,
     }),
-    onSuccess: () => Alert.alert('Download ready', 'The video is saved in Drovixa private storage.'),
+    onSuccess: () => {
+      setDownloadProgress(null);
+      Alert.alert(t('player.readyTitle'), t('player.readyBody'));
+    },
     onError: (error) => {
+      setDownloadProgress(null);
       const message = axios.isAxiosError(error) ? error.response?.data?.error?.message : null;
       Alert.alert('Download', message ?? 'Download failed. Please try again.');
     },
@@ -57,7 +65,7 @@ export default function WatchScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator color="#FF3D71" size="large" />
-        <Text style={styles.secondary}>Authorizing secure playback…</Text>
+        <Text style={styles.secondary}>{t('player.authorizing')}</Text>
       </View>
     );
   }
@@ -67,17 +75,19 @@ export default function WatchScreen() {
       : null;
     return (
       <View style={styles.center}>
-        <Text style={styles.title}>Playback unavailable</Text>
-        <Text style={styles.secondary}>{message ?? 'Please try again later.'}</Text>
+        <Text style={styles.title}>{t('player.unavailable')}</Text>
+        <Text style={styles.secondary}>{message ?? t('player.tryLater')}</Text>
       </View>
     );
   }
   return (
     <View style={styles.screen}>
-      <DrovixaVideoPlayer grant={grant.data} />
+      <DrovixaVideoPlayer grant={grant.data} onRetry={() => void grant.refetch()} />
       {session && flags.data?.downloads_enabled?.enabled ? (
         <Pressable disabled={offline.isPending} onPress={() => offline.mutate()} style={styles.downloadButton}>
-          <Text style={styles.commentsButtonText}>{offline.isPending ? 'Downloading…' : '↓ Download'}</Text>
+          <Text style={styles.commentsButtonText}>{downloadProgress
+            ? `${downloadProgress.phase === 'preparing' ? t('player.preparing') : downloadProgress.phase === 'saving' ? t('player.saving') : t('player.downloading')} ${downloadProgress.percent}%`
+            : `↓ ${t('player.download')}`}</Text>
         </Pressable>
       ) : null}
       {session && flags.data?.watch_party_enabled?.enabled ? <Pressable disabled={party.isPending} onPress={()=>party.mutate()} style={styles.partyButton}><Text style={styles.commentsButtonText}>{party.isPending?'Creating…':'◉ Watch Party'}</Text></Pressable>:null}

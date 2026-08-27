@@ -4,7 +4,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import hash_refresh_token, utcnow
+from app.core.security import hash_refresh_token, utcnow, verify_password
 from app.models.auth import Device, RefreshToken, UserSession
 from app.models.configuration import FeatureFlag
 from app.models.enums import UserStatus
@@ -101,6 +101,35 @@ async def test_logout_revokes_access_session(
     after = await client.get("/api/v1/users/me", headers=headers)
     assert after.status_code == 401
     assert after.json()["error"]["code"] == "SESSION_REVOKED"
+
+
+async def test_change_password_requires_current_password_and_updates_hash(
+    client: AsyncClient,
+    db: AsyncSession,
+    registered: dict[str, object],
+    register_payload: dict[str, object],
+) -> None:
+    headers = auth_header(str(registered["access_token"]))
+    rejected = await client.post(
+        "/api/v1/auth/change-password",
+        headers=headers,
+        json={"current_password": "wrong-password", "new_password": "new-secure-123"},
+    )
+    assert rejected.status_code == 400
+    assert rejected.json()["error"]["code"] == "INVALID_CURRENT_PASSWORD"
+
+    changed = await client.post(
+        "/api/v1/auth/change-password",
+        headers=headers,
+        json={
+            "current_password": register_payload["password"],
+            "new_password": "new-secure-123",
+        },
+    )
+    assert changed.status_code == 200
+    user = await db.scalar(select(User).where(User.email == register_payload["email"]))
+    assert user is not None
+    assert verify_password("new-secure-123", user.password_hash)
 
 
 async def test_device_inventory_and_logout(
