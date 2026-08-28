@@ -146,6 +146,10 @@ async def upload_content_media(
     origin = (public_api_origin or str(request.base_url)).rstrip("/")
     api_prefix = request.url.path.split("/admin/", 1)[0]
     media_url = f"{origin}{api_prefix}/media/content/{row.id}"
+    if variant == "poster":
+        content.poster_url = media_url
+    elif variant == "backdrop":
+        content.backdrop_url = media_url
     add_audit_log(
         db,
         admin=admin,
@@ -159,6 +163,7 @@ async def upload_content_media(
             "variant": variant,
             "mime_type": mime_type,
             "byte_size": len(image_data),
+            "url": media_url,
         },
     )
     await db.commit()

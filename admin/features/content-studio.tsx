@@ -269,6 +269,27 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
     setEpisodeForm((current) => ({ ...current, episode_number: String(nextEpisode) }));
   }, [kind, episodes.data]);
 
+  useEffect(() => {
+    if (kind !== 'series' || !episodes.data) return;
+    const savedDraft = [...episodes.data].reverse().find(
+      (item) => item.status !== 'published' && item.video_asset?.status === 'ready',
+    );
+    if (!savedDraft) return;
+    setEpisodeForm((current) => current.video_asset_id ? current : ({
+      ...current,
+      season_id: savedDraft.season_id ?? '',
+      episode_number: String(savedDraft.episode_number),
+      title: savedDraft.title,
+      description: savedDraft.description ?? '',
+      thumbnail_url: savedDraft.thumbnail_url ?? '',
+      orientation: savedDraft.orientation,
+      access_type: savedDraft.access_type,
+      coin_price: String(savedDraft.coin_price ?? 0),
+      premium: savedDraft.premium,
+      video_asset_id: savedDraft.video_asset?.id ?? '',
+    }));
+  }, [kind, episodes.data]);
+
   const refreshDetail = () => client.invalidateQueries({ queryKey: ['content-detail', kind, contentId] });
   const refreshSeries = () => {
     client.invalidateQueries({ queryKey: ['content-seasons', contentId] });
@@ -371,6 +392,21 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
             premium: episodeForm.premium,
           }),
         })).data;
+      } else {
+        episode = (await apiRequest<Episode>(`/episodes/${episode.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            season_id: season.id,
+            title: episodeForm.title.trim() || episode.title,
+            description: nullable(episodeForm.description),
+            thumbnail_url: nullable(episodeForm.thumbnail_url || form.poster_url),
+            video_asset_id: assetId,
+            orientation: episodeForm.orientation,
+            access_type: accessType,
+            coin_price: coinPrice,
+            premium: episodeForm.premium,
+          }),
+        })).data;
       }
 
       if (episode.status !== 'published') {
@@ -398,6 +434,48 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
       setForm((current) => ({ ...current, video_asset_id: response.data.video_asset?.id ?? '' }));
       setNotice('Video attached to the movie.');
       refreshDetail();
+    },
+  });
+  const persistSeriesAsset = useMutation({
+    mutationFn: async (asset: VideoAsset) => {
+      const existing = episodes.data?.find((item) => item.video_asset?.id === asset.id);
+      if (existing) return existing;
+      let season = seasons.data?.[0];
+      if (!season) {
+        season = (await apiRequest<Season>('/seasons', {
+          method: 'POST',
+          body: JSON.stringify({ series_id: contentId, season_number: 1, title: 'Season 1' }),
+        })).data;
+      }
+      const episodeNumber = Math.max(0, ...(episodes.data ?? []).map((item) => item.episode_number)) + 1;
+      return (await apiRequest<Episode>('/episodes', {
+        method: 'POST',
+        body: JSON.stringify({
+          series_id: contentId,
+          season_id: season.id,
+          episode_number: episodeNumber,
+          title: episodeForm.title.trim() || `Episode ${episodeNumber}`,
+          description: nullable(episodeForm.description),
+          thumbnail_url: nullable(episodeForm.thumbnail_url || form.poster_url),
+          video_asset_id: asset.id,
+          orientation: episodeForm.orientation,
+          access_type: 'free',
+          coin_price: 0,
+          premium: false,
+        }),
+      })).data;
+    },
+    onSuccess: (episode) => {
+      setEpisodeForm((current) => ({
+        ...current,
+        season_id: episode.season_id ?? '',
+        episode_number: String(episode.episode_number),
+        title: current.title.trim() || episode.title,
+        thumbnail_url: current.thumbnail_url || episode.thumbnail_url || '',
+        video_asset_id: episode.video_asset?.id ?? current.video_asset_id,
+      }));
+      setNotice('Video saved as a draft episode. It will still be here after a refresh.');
+      refreshSeries();
     },
   });
   const createSeason = useMutation({
@@ -455,7 +533,7 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
 
   const mutationError = save.error ?? publish.error ?? attachMovieAsset.error ?? createSeason.error
     ?? publishSeason.error ?? archiveSeason.error ?? createEpisode.error ?? publishEpisode.error
-    ?? archiveEpisode.error ?? quickPublish.error;
+    ?? archiveEpisode.error ?? quickPublish.error ?? persistSeriesAsset.error;
 
   const readyAssets = useMemo(
     () => assets.data?.filter((asset) => asset.status === 'ready') ?? [],
@@ -469,7 +547,7 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
       attachMovieAsset.mutate(asset.id);
     } else {
       setEpisodeForm((current) => ({ ...current, video_asset_id: asset.id }));
-      setNotice('Video selected for the new episode. Complete the episode form, then create it.');
+      if (!persistSeriesAsset.isPending) persistSeriesAsset.mutate(asset);
     }
   };
 
@@ -578,7 +656,8 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
       }));
       setEpisodeForm((current) => ({ ...current, thumbnail_url: posterResponse.data.url }));
       setCoverStatus('Cover ready');
-      setNotice('Cover uploaded. Publish when the video is ready.');
+      await refreshDetail();
+      setNotice('Cover saved. It will still be here after a refresh.');
     } catch (error) {
       setCoverStatus('');
       setCoverError(errorMessage(error));
@@ -631,7 +710,7 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
                   <input type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,video/x-m4v" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file); event.target.value = ''; }} />
                 </label>
                 {uploadStatus ? <div className="quick-progress"><div className="progress-track"><div className="progress-bar" style={{ width: `${uploadProgress}%` }} /></div><strong>{uploadProgress}%</strong></div> : null}
-                <button className="button button-primary" disabled={quickPublish.isPending || !(form.video_asset_id || episodeForm.video_asset_id)} onClick={() => quickPublish.mutate()}>{quickPublish.isPending ? 'Publishing…' : 'Publish now'}</button>
+                <button className="button button-primary" disabled={quickPublish.isPending || persistSeriesAsset.isPending || !(form.video_asset_id || episodeForm.video_asset_id)} onClick={() => quickPublish.mutate()}>{persistSeriesAsset.isPending ? 'Saving video…' : quickPublish.isPending ? 'Publishing…' : 'Publish now'}</button>
               </div>
               {uploadError ? <div className="notice">{uploadError}</div> : null}
               {coverError ? <div className="notice">{coverError}</div> : null}
@@ -716,7 +795,7 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
                   {asset.thumbnail_url ? <img src={asset.thumbnail_url} alt="Video thumbnail" /> : <div className="asset-placeholder">▶</div>}
                   <div className="primary-cell"><strong>{asset.provider} · {asset.provider_asset_id.slice(0, 16)}…</strong><small>{asset.duration_seconds ? `${Math.round(asset.duration_seconds / 60)} min · ` : ''}{asset.width && asset.height ? `${asset.width}×${asset.height} · ` : ''}{formatDate(asset.created_at)}</small></div>
                   <Badge tone={asset.status === 'ready' ? 'success' : asset.status === 'failed' ? 'danger' : 'warning'}>{asset.status}</Badge>
-                  <div className="actions">{asset.status === 'ready' ? <button className="button button-accent" onClick={() => selectAsset(asset)}>Use this video</button> : <button className="button button-quiet" onClick={() => void refreshSingleAsset(asset.id)}>Refresh status</button>}</div>
+                  <div className="actions">{asset.status === 'ready' ? <button className="button button-accent" disabled={persistSeriesAsset.isPending} onClick={() => selectAsset(asset)}>Use this video</button> : <button className="button button-quiet" onClick={() => void refreshSingleAsset(asset.id)}>Refresh status</button>}</div>
                 </div>)}
                 {!assets.isLoading && assets.data?.length === 0 ? <div className="empty-state compact-empty"><div><strong>No video assets yet</strong><span>Choose a local file or import a source URL above.</span></div></div> : null}
               </div>

@@ -209,6 +209,9 @@ async def test_admin_uploads_and_serves_durable_content_cover(
     assert uploaded.status_code == 201, uploaded.text
     media_url = uploaded.json()["data"]["url"]
     assert media_url.startswith("https://api.example.test/api/v1/media/content/")
+    saved = await client.get(f"/api/v1/admin/series/{content.id}", headers=admin_headers)
+    assert saved.status_code == 200
+    assert saved.json()["data"]["poster_url"] == media_url
     media_id = media_url.rsplit("/", 1)[-1]
     downloaded = await client.get(f"/api/v1/media/content/{media_id}")
     assert downloaded.status_code == 200
