@@ -179,8 +179,8 @@ class Subscription(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default=SubscriptionStatus.ACTIVE.value,
         index=True,
     )
-    starts_at: Mapped[datetime]
-    current_period_start: Mapped[datetime]
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    current_period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     current_period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     cancel_at_period_end: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"

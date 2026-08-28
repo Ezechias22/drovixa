@@ -17,6 +17,12 @@ from app.models.enums import (
     SeriesStatus,
 )
 from app.models.experience import Notification
+from app.models.monetization import Subscription
+
+
+def test_subscription_period_columns_are_timezone_aware() -> None:
+    for column_name in ("starts_at", "current_period_start", "current_period_end"):
+        assert Subscription.__table__.c[column_name].type.timezone is True
 
 
 async def published_content(db: AsyncSession) -> Content:
