@@ -130,8 +130,8 @@ class WalletAdjustmentInput(BaseModel):
 
 
 class AdminSubscriptionGrantInput(BaseModel):
-    plan_id: UUID
-    days: int = Field(default=30, ge=1, le=3650)
+    plan_id: UUID | None = None
+    days: int = Field(default=30, ge=1, le=36500)
     reason: str = Field(min_length=3, max_length=500)
 
 

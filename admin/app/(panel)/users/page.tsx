@@ -8,7 +8,6 @@ import { apiRequest, formatDate } from '@/lib/api';
 import type { AdminUser, PageMeta } from '@/lib/types';
 
 type Role = { id: string; name: string; description: string; permissions: string[] };
-type Plan = { id: string; name: string; active: boolean; interval: string };
 type Monetization = {
   wallet: { coin_balance: number; bonus_coin_balance: number; total_balance: number };
   subscription: null | {
@@ -31,7 +30,6 @@ export default function UsersPage() {
   const [managing, setManaging] = useState<AdminUser | null>(null);
   const [coinAmount, setCoinAmount] = useState('100');
   const [reason, setReason] = useState('Admin adjustment');
-  const [planId, setPlanId] = useState('');
   const [premiumDays, setPremiumDays] = useState('30');
   const [moneyNotice, setMoneyNotice] = useState('');
   const params = new URLSearchParams({ page: String(page), limit: '20' });
@@ -44,10 +42,6 @@ export default function UsersPage() {
   const roles = useQuery({
     queryKey: ['roles'],
     queryFn: async () => (await apiRequest<Role[]>('/roles')).data,
-  });
-  const plans = useQuery({
-    queryKey: ['subscription-plans', 'user-manager'],
-    queryFn: async () => (await apiRequest<Plan[]>('/subscription-plans?page=1&limit=100')).data,
   });
   const monetization = useQuery({
     queryKey: ['user-monetization', managing?.id],
@@ -88,14 +82,16 @@ export default function UsersPage() {
   const grantPremium = useMutation({
     mutationFn: () => {
       if (!managing) throw new Error('Choose a user.');
-      const selectedPlan = planId || plans.data?.find((plan) => plan.active)?.id;
-      if (!selectedPlan) throw new Error('Activate or create a Premium plan first.');
+      const days = Number(premiumDays);
+      if (!Number.isInteger(days) || days < 1 || days > 36500) {
+        throw new Error('Enter a whole number from 1 to 36,500 days.');
+      }
       return apiRequest(`/users/${managing.id}/premium`, {
         method: 'POST',
-        body: JSON.stringify({ plan_id: selectedPlan, days: Number(premiumDays), reason }),
+        body: JSON.stringify({ days, reason }),
       });
     },
-    onSuccess: async () => { setMoneyNotice('Premium access assigned.'); await refreshMoney(); },
+    onSuccess: async () => { setMoneyNotice(`Premium access assigned for ${premiumDays} day(s).`); await refreshMoney(); },
   });
   const revokePremium = useMutation({
     mutationFn: () => {
@@ -211,8 +207,8 @@ export default function UsersPage() {
                   <div className="money-card">
                     <span>Premium access</span><strong>{monetization.data.subscription ? monetization.data.subscription.plan.name : 'Not active'}</strong>
                     {monetization.data.subscription ? <small>{monetization.data.subscription.provider} · ends {formatDate(monetization.data.subscription.current_period_end)}</small> : null}
-                    <div className="form-field"><label>Plan</label><select className="select" value={planId || plans.data?.find((plan) => plan.active)?.id || ''} onChange={(event) => setPlanId(event.target.value)}>{plans.data?.filter((plan) => plan.active).map((plan) => <option key={plan.id} value={plan.id}>{plan.name} · {plan.interval}</option>)}</select></div>
-                    <div className="form-field"><label>Days</label><input className="field" type="number" min="1" max="3650" value={premiumDays} onChange={(event) => setPremiumDays(event.target.value)} /></div>
+                    <div className="form-field"><label>Duration in days</label><input className="field" type="number" min="1" max="36500" step="1" value={premiumDays} onChange={(event) => setPremiumDays(event.target.value)} /><small>Enter any whole number from 1 to 36,500.</small></div>
+                    <div className="actions">{[1, 7, 30, 90, 365].map((days) => <button className="button button-quiet" key={days} onClick={() => setPremiumDays(String(days))}>{days}d</button>)}</div>
                     <div className="actions"><button className="button button-primary" disabled={grantPremium.isPending} onClick={() => grantPremium.mutate()}>Give Premium</button>{monetization.data.subscription?.provider === 'admin_grant' ? <button className="button button-danger" disabled={revokePremium.isPending} onClick={() => window.confirm(`Remove Premium from ${managing.email}?`) && revokePremium.mutate()}>Remove Premium</button> : null}</div>
                   </div>
                 </div>

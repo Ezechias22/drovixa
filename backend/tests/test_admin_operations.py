@@ -249,12 +249,22 @@ async def test_admin_manages_user_coins_and_premium(
         headers=admin_headers,
         json={
             "plan_id": plan.json()["data"]["id"],
-            "days": 30,
+            "days": 1,
             "reason": "Phase 12.4 verification",
         },
     )
     assert granted.status_code == 200, granted.text
     assert granted.json()["data"]["provider"] == "admin_grant"
+    first_end = granted.json()["data"]["current_period_end"]
+    extended = await client.post(
+        f"/api/v1/admin/users/{user_id}/premium",
+        headers=admin_headers,
+        json={"days": 4000, "reason": "Custom admin Premium duration"},
+    )
+    assert extended.status_code == 200, extended.text
+    assert extended.json()["data"]["id"] == granted.json()["data"]["id"]
+    assert extended.json()["data"]["plan"]["slug"] == "drovixa-internal-admin-premium"
+    assert extended.json()["data"]["current_period_end"] > first_end
     overview = await client.get(
         f"/api/v1/admin/users/{user_id}/monetization", headers=admin_headers
     )

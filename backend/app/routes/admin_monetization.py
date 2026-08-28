@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, timedelta
+from decimal import Decimal
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
@@ -11,7 +12,7 @@ from sqlalchemy import func, select
 from app.api.deps import DbSession, require_permission
 from app.core.exceptions import AppError
 from app.models.base import utcnow
-from app.models.enums import SubscriptionStatus
+from app.models.enums import SubscriptionInterval, SubscriptionStatus
 from app.models.monetization import CoinPackage, Payment, Subscription, SubscriptionPlan, Wallet
 from app.models.user import User
 from app.schemas.common import success
@@ -42,6 +43,7 @@ PaymentsViewer = Annotated[User, require_permission("payments.view")]
 SubscriptionManager = Annotated[User, require_permission("subscriptions.manage")]
 Page = Annotated[int, Query(ge=1)]
 Limit = Annotated[int, Query(ge=1, le=100)]
+ADMIN_PREMIUM_PLAN_SLUG = "drovixa-internal-admin-premium"
 IdempotencyKey = Annotated[
     str,
     Header(
@@ -74,6 +76,28 @@ async def _subscription_plan(db: DbSession, plan_id: UUID) -> SubscriptionPlan:
     )
     if row is None:
         raise AppError("NOT_FOUND", "Subscription plan not found.", status_code=404)
+    return row
+
+
+async def _admin_premium_plan(db: DbSession) -> SubscriptionPlan:
+    row = await db.scalar(
+        select(SubscriptionPlan).where(SubscriptionPlan.slug == ADMIN_PREMIUM_PLAN_SLUG)
+    )
+    if row is None:
+        row = SubscriptionPlan(
+            name="Admin Premium",
+            slug=ADMIN_PREMIUM_PLAN_SLUG,
+            interval=SubscriptionInterval.MONTHLY,
+            price=Decimal("0.01"),
+            currency="USD",
+            active=False,
+            featured=False,
+            trial_days=0,
+            benefits={"internal_admin_grant": True},
+            sort_order=9999,
+        )
+        db.add(row)
+        await db.flush()
     return row
 
 
@@ -350,8 +374,12 @@ async def admin_grant_premium(
     )
     if user_exists is None:
         raise AppError("NOT_FOUND", "User not found.", status_code=404)
-    plan = await _subscription_plan(db, payload.plan_id)
-    if not plan.active:
+    plan = (
+        await _subscription_plan(db, payload.plan_id)
+        if payload.plan_id is not None
+        else await _admin_premium_plan(db)
+    )
+    if payload.plan_id is not None and not plan.active:
         raise AppError("PLAN_INACTIVE", "Activate this plan before assigning it.", status_code=409)
     now = utcnow()
     row = await db.scalar(
@@ -385,7 +413,10 @@ async def admin_grant_premium(
         row.plan = plan
         row.status = SubscriptionStatus.ACTIVE
         row.current_period_start = now
-        row.current_period_end = max(row.current_period_end, now) + timedelta(days=payload.days)
+        current_end = row.current_period_end
+        if current_end.tzinfo is None:
+            current_end = current_end.replace(tzinfo=UTC)
+        row.current_period_end = max(current_end, now) + timedelta(days=payload.days)
         row.cancel_at_period_end = False
         row.cancelled_at = None
         row.ended_at = None
