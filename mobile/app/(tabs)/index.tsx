@@ -1,69 +1,74 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { FlatList, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ContentCard } from '@/components/ContentCard';
 import { PageHeader } from '@/components/PageHeader';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ScreenStates';
-import { getHome } from '@/features/catalog/api';
-import { AdCard } from '@/features/growth/AdCard';
+import { getDiscover } from '@/features/catalog/api';
+import type { ContentCardData } from '@/features/catalog/types';
 import { useI18n } from '@/i18n';
 import { colors } from '@/theme';
+
+type Feed = 'popular' | 'new' | 'series';
+
+function PosterCard({ item }: { item: ContentCardData }) {
+  const { t } = useI18n();
+  const router = useRouter();
+  const open = () => router.push({
+    pathname: item.type === 'series' ? '/series/[slug]' : '/movie/[slug]',
+    params: { slug: item.slug },
+  });
+  return (
+    <Pressable onPress={open} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
+      <View style={styles.poster}>
+        {item.poster_url ? <Image source={{ uri: item.poster_url }} resizeMode="cover" style={styles.posterImage} /> : (
+          <View style={styles.fallback}><Text style={styles.fallbackLetter}>D</Text><Text style={styles.fallbackName}>DROVIXA</Text></View>
+        )}
+        {item.premium ? <Text style={styles.premium}>VIP</Text> : null}
+        <View style={styles.posterShade} />
+      </View>
+      <Text numberOfLines={1} style={styles.cardTitle}>{item.title}</Text>
+      <Text numberOfLines={1} style={styles.cardMeta}>{item.type === 'series' ? t('content.episodeCount', { count: item.total_episodes ?? 0 }) : t('content.movie')}</Text>
+    </Pressable>
+  );
+}
 
 export default function Home() {
   const { t } = useI18n();
   const inset = useSafeAreaInsets();
-  const router = useRouter();
-  const home = useQuery({ queryKey: ['home'], queryFn: getHome });
-  if (home.isPending) return <LoadingState />;
-  if (home.isError) return <ErrorState retry={() => void home.refetch()} />;
-  const hero = home.data.hero[0];
-  const openHero = () => hero && router.push({
-    pathname: hero.type === 'series' ? '/series/[slug]' : '/movie/[slug]',
-    params: { slug: hero.slug },
+  const [feed, setFeed] = useState<Feed>('popular');
+  const catalog = useQuery({
+    queryKey: ['home-poster-grid', feed],
+    queryFn: () => getDiscover({
+      sort: feed === 'new' ? 'new' : 'popular',
+      type: feed === 'series' ? 'series' : undefined,
+      limit: 40,
+    }),
   });
+  const labels: Record<Feed, string> = {
+    popular: t('discover.popular'), new: t('discover.new'), series: t('home.series'),
+  };
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={{ paddingTop: inset.top }}><PageHeader /></View>
-      {hero ? (
-        <ImageBackground source={hero.backdrop_url ? { uri: hero.backdrop_url } : undefined} style={styles.hero} imageStyle={styles.heroImage}>
-          <View style={styles.shade}>
-            <Text style={styles.premium}>{hero.premium ? t('home.original') : t('home.featured')}</Text>
-            <Text style={styles.heroTitle}>{hero.title}</Text>
-            <Text numberOfLines={3} style={styles.description}>{hero.short_description}</Text>
-            <View style={styles.actions}>
-              <Pressable onPress={openHero} style={styles.primary}><Text style={styles.primaryText}>▶ {t('home.watch')}</Text></Pressable>
-              <Pressable onPress={openHero} style={styles.secondary}><Text style={styles.secondaryText}>{t('home.more')}</Text></Pressable>
-            </View>
-          </View>
-        </ImageBackground>
-      ) : null}
-      <View style={styles.sections}>
-        <AdCard />
-        {home.data.sections.map((section) => (
-          <View key={section.id} style={styles.section}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <FlatList
-              contentContainerStyle={styles.row}
-              data={section.items}
-              horizontal
-              keyExtractor={(item) => 'content' in item ? item.progress.id : item.id}
-              renderItem={({ item, index }) => <ContentCard item={item} rank={section.presentation === 'ranked' ? index + 1 : undefined} />}
-              showsHorizontalScrollIndicator={false}
-            />
-          </View>
-        ))}
-        {!hero && !home.data.sections.length ? <EmptyState title={t('home.emptyTitle')} body={t('home.emptyBody')} /> : null}
-      </View>
+      <View style={styles.heading}><Text style={styles.eyebrow}>DROVIXA</Text><Text style={styles.title}>{t('home.catalog')}</Text></View>
+      <View style={styles.tabs}>{(['popular', 'new', 'series'] as Feed[]).map((item) => <Pressable key={item} onPress={() => setFeed(item)} style={[styles.tab, feed === item && styles.activeTab]}><Text style={[styles.tabText, feed === item && styles.activeTabText]}>{labels[item]}</Text></Pressable>)}</View>
+      {catalog.isPending ? <LoadingState /> : null}
+      {catalog.isError ? <ErrorState retry={() => void catalog.refetch()} /> : null}
+      {catalog.data?.data.length ? <View style={styles.grid}>{catalog.data.data.map((item) => <PosterCard item={item} key={item.id} />)}</View> : null}
+      {catalog.data && !catalog.data.data.length ? <EmptyState title={t('home.emptyTitle')} body={t('home.emptyBody')} /> : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background }, content: { paddingBottom: 36 },
-  hero: { height: 510, marginHorizontal: 14, borderRadius: 26, overflow: 'hidden', backgroundColor: colors.card }, heroImage: { borderRadius: 26 }, shade: { flex: 1, justifyContent: 'flex-end', gap: 10, padding: 22, backgroundColor: '#08090b55' },
-  premium: { color: colors.accent, fontSize: 10, fontWeight: '900', letterSpacing: 1.5 }, heroTitle: { color: colors.text, fontSize: 36, lineHeight: 40, fontWeight: '900' }, description: { color: '#ddd', fontSize: 14, lineHeight: 20 },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 8 }, primary: { backgroundColor: colors.text, borderRadius: 99, padding: 13 }, primaryText: { color: colors.background, fontWeight: '900' }, secondary: { backgroundColor: '#ffffff22', borderRadius: 99, padding: 13 }, secondaryText: { color: colors.text, fontWeight: '800' },
-  sections: { paddingTop: 28, gap: 30 }, section: { gap: 12 }, sectionTitle: { color: colors.text, fontSize: 20, fontWeight: '900', paddingHorizontal: 18 }, row: { gap: 12, paddingHorizontal: 18 },
+  screen: { flex: 1, backgroundColor: colors.background }, content: { paddingBottom: 38 },
+  heading: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14 }, eyebrow: { color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 2.5 }, title: { color: colors.text, fontSize: 30, lineHeight: 36, fontWeight: '900', marginTop: 4 },
+  tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 18 }, tab: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 99, backgroundColor: colors.card }, activeTab: { backgroundColor: colors.text }, tabText: { color: colors.muted, fontSize: 12, fontWeight: '900' }, activeTabText: { color: colors.background },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 20, paddingHorizontal: 14 }, card: { width: '48.4%', gap: 5 }, pressed: { opacity: 0.78, transform: [{ scale: 0.985 }] },
+  poster: { width: '100%', aspectRatio: 2 / 3, overflow: 'hidden', borderRadius: 15, backgroundColor: colors.card, borderWidth: 1, borderColor: '#ffffff12' }, posterImage: { width: '100%', height: '100%' }, posterShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '22%', backgroundColor: '#00000022' },
+  fallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#17131d' }, fallbackLetter: { color: colors.accent, fontSize: 52, fontWeight: '900' }, fallbackName: { color: colors.muted, fontSize: 8, fontWeight: '900', letterSpacing: 2 }, premium: { position: 'absolute', right: 7, top: 7, color: '#fff', backgroundColor: colors.accent, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 4, fontSize: 8, fontWeight: '900', overflow: 'hidden' },
+  cardTitle: { color: colors.text, fontSize: 13, fontWeight: '900', paddingHorizontal: 2 }, cardMeta: { color: colors.muted, fontSize: 10, paddingHorizontal: 2 },
 });

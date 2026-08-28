@@ -17,7 +17,7 @@ from app.core.exceptions import AppError
 from app.core.security import hash_password, verify_password
 from app.integrations.videos.base import VideoProvider
 from app.models.base import utcnow
-from app.models.content import Content
+from app.models.content import Content, Episode
 from app.models.enums import AgeRating, ContentStatus, ContentType, ContentVisibility, VideoStatus
 from app.models.personalization import CastSession, ContentRating, DownloadLicense, ViewerProfile
 from app.models.streaming import PlaybackSession
@@ -350,6 +350,7 @@ async def authorize_download(
     quality: str,
 ) -> dict[str, Any]:
     profile = await owned_profile(db, context=context, profile_id=profile_id)
+    episode: Episode | None
     if target_type == ContentType.SERIES:
         content, episode, asset, access_type, free_from, free_until = await _episode_target(
             db, target_id

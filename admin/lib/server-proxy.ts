@@ -80,11 +80,15 @@ export async function forwardWithAdminSession(
     ? undefined
     : new Uint8Array(await request.arrayBuffer());
   const query = new URL(request.url).search;
+  const publicApiOrigin = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1')
+    .replace(/\/api\/v1\/?$/, '')
+    .replace(/\/$/, '');
   const callBackend = (token: string) =>
     fetch(`${backendBaseUrl()}${backendPath}${query}`, {
       method: request.method,
       headers: {
         Authorization: `Bearer ${token}`,
+        'X-Public-API-Origin': publicApiOrigin,
         ...(request.headers.get('content-type')
           ? { 'Content-Type': request.headers.get('content-type') as string }
           : {}),

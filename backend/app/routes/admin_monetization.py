@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Annotated, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -10,10 +11,13 @@ from sqlalchemy import func, select
 from app.api.deps import DbSession, require_permission
 from app.core.exceptions import AppError
 from app.models.base import utcnow
-from app.models.monetization import CoinPackage, Payment, Subscription, SubscriptionPlan
+from app.models.enums import SubscriptionStatus
+from app.models.monetization import CoinPackage, Payment, Subscription, SubscriptionPlan, Wallet
 from app.models.user import User
 from app.schemas.common import success
 from app.schemas.monetization import (
+    AdminSubscriptionGrantInput,
+    AdminSubscriptionRevokeInput,
     CoinPackageCreate,
     CoinPackageUpdate,
     SubscriptionPlanCreate,
@@ -23,6 +27,7 @@ from app.schemas.monetization import (
 from app.services.audit import add_audit_log
 from app.services.monetization import (
     adjust_wallet,
+    current_subscription,
     ledger_data,
     package_data,
     plan_data,
@@ -303,6 +308,162 @@ async def admin_adjust_wallet(
     )
     await db.commit()
     return success({"wallet": wallet_data(wallet), "transaction": ledger_data(ledger)})
+
+
+@router.get("/users/{user_id}/monetization")
+async def admin_user_monetization(
+    user_id: UUID,
+    _: WalletViewer,
+    __: SubscriptionManager,
+    db: DbSession,
+) -> dict[str, Any]:
+    user_exists = await db.scalar(
+        select(User.id).where(User.id == user_id, User.deleted_at.is_(None))
+    )
+    if user_exists is None:
+        raise AppError("NOT_FOUND", "User not found.", status_code=404)
+    wallet = await db.scalar(select(Wallet).where(Wallet.user_id == user_id))
+    subscription = await current_subscription(db, user_id=user_id)
+    wallet_snapshot = wallet_data(wallet) if wallet else {
+        "user_id": user_id,
+        "coin_balance": 0,
+        "bonus_coin_balance": 0,
+        "total_balance": 0,
+        "updated_at": None,
+    }
+    return success({
+        "wallet": wallet_snapshot,
+        "subscription": subscription_data(subscription) if subscription else None,
+    })
+
+
+@router.post("/users/{user_id}/premium")
+async def admin_grant_premium(
+    user_id: UUID,
+    payload: AdminSubscriptionGrantInput,
+    request: Request,
+    admin: SubscriptionManager,
+    db: DbSession,
+) -> dict[str, Any]:
+    user_exists = await db.scalar(
+        select(User.id).where(User.id == user_id, User.deleted_at.is_(None))
+    )
+    if user_exists is None:
+        raise AppError("NOT_FOUND", "User not found.", status_code=404)
+    plan = await _subscription_plan(db, payload.plan_id)
+    if not plan.active:
+        raise AppError("PLAN_INACTIVE", "Activate this plan before assigning it.", status_code=409)
+    now = utcnow()
+    row = await db.scalar(
+        select(Subscription)
+        .where(
+            Subscription.user_id == user_id,
+            Subscription.provider == "admin_grant",
+            Subscription.status.in_([SubscriptionStatus.TRIALING, SubscriptionStatus.ACTIVE]),
+            Subscription.current_period_end > now,
+        )
+        .order_by(Subscription.current_period_end.desc())
+    )
+    old = subscription_data(row) if row else None
+    if row is None:
+        row = Subscription(
+            user_id=user_id,
+            plan_id=plan.id,
+            plan=plan,
+            provider="admin_grant",
+            provider_subscription_id=f"admin:{user_id}:{uuid4()}",
+            status=SubscriptionStatus.ACTIVE,
+            starts_at=now,
+            current_period_start=now,
+            current_period_end=now + timedelta(days=payload.days),
+            cancel_at_period_end=False,
+            subscription_metadata={},
+        )
+        db.add(row)
+    else:
+        row.plan_id = plan.id
+        row.plan = plan
+        row.status = SubscriptionStatus.ACTIVE
+        row.current_period_start = now
+        row.current_period_end = max(row.current_period_end, now) + timedelta(days=payload.days)
+        row.cancel_at_period_end = False
+        row.cancelled_at = None
+        row.ended_at = None
+    row.subscription_metadata = {
+        **(row.subscription_metadata or {}),
+        "reason": payload.reason,
+        "granted_by": str(admin.id),
+        "days": payload.days,
+    }
+    await db.flush()
+    snapshot = subscription_data(row)
+    add_audit_log(
+        db,
+        admin=admin,
+        request=request,
+        action="subscription.admin_grant",
+        entity_type="subscription",
+        entity_id=str(row.id),
+        old_value=jsonable_encoder(old),
+        new_value=jsonable_encoder(snapshot),
+    )
+    await db.commit()
+    return success(snapshot)
+
+
+@router.post("/users/{user_id}/premium/revoke")
+async def admin_revoke_premium(
+    user_id: UUID,
+    payload: AdminSubscriptionRevokeInput,
+    request: Request,
+    admin: SubscriptionManager,
+    db: DbSession,
+) -> dict[str, Any]:
+    now = utcnow()
+    row = await db.scalar(
+        select(Subscription)
+        .where(
+            Subscription.user_id == user_id,
+            Subscription.provider == "admin_grant",
+            Subscription.status.in_([SubscriptionStatus.TRIALING, SubscriptionStatus.ACTIVE]),
+            Subscription.current_period_end > now,
+        )
+        .order_by(Subscription.current_period_end.desc())
+    )
+    if row is None:
+        raise AppError(
+            "NO_ADMIN_PREMIUM",
+            (
+                "No active admin-assigned Premium access was found. "
+                "Paid subscriptions must be managed by their payment provider."
+            ),
+            status_code=409,
+        )
+    old = subscription_data(row)
+    row.status = SubscriptionStatus.CANCELLED
+    row.cancel_at_period_end = False
+    row.current_period_end = now
+    row.cancelled_at = now
+    row.ended_at = now
+    row.subscription_metadata = {
+        **(row.subscription_metadata or {}),
+        "revoke_reason": payload.reason,
+        "revoked_by": str(admin.id),
+    }
+    await db.flush()
+    snapshot = subscription_data(row)
+    add_audit_log(
+        db,
+        admin=admin,
+        request=request,
+        action="subscription.admin_revoke",
+        entity_type="subscription",
+        entity_id=str(row.id),
+        old_value=jsonable_encoder(old),
+        new_value=jsonable_encoder(snapshot),
+    )
+    await db.commit()
+    return success(snapshot)
 
 
 @router.get("/payments")

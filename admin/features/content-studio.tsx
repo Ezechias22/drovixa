@@ -84,6 +84,7 @@ type UploadSession = {
   upload_url: string;
   upload_headers: Record<string, string>;
 };
+type MediaUpload = { id: string; variant: string; url: string };
 type MetadataForm = {
   title: string;
   slug: string;
@@ -151,6 +152,37 @@ function multiSelectValues(event: ChangeEvent<HTMLSelectElement>) {
   return Array.from(event.target.selectedOptions, (option) => option.value);
 }
 
+async function cropCover(file: File, width: number, height: number) {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = objectUrl;
+    await image.decode();
+    const sourceRatio = image.naturalWidth / image.naturalHeight;
+    const targetRatio = width / height;
+    const sourceWidth = sourceRatio > targetRatio
+      ? image.naturalHeight * targetRatio
+      : image.naturalWidth;
+    const sourceHeight = sourceRatio > targetRatio
+      ? image.naturalHeight
+      : image.naturalWidth / targetRatio;
+    const sourceX = (image.naturalWidth - sourceWidth) / 2;
+    const sourceY = (image.naturalHeight - sourceHeight) / 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('This browser cannot prepare the cover image.');
+    context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.84));
+    if (!blob) throw new Error('The cover image could not be prepared.');
+    if (blob.size > 1_800_000) throw new Error('The cover is still too large after compression. Choose a smaller image.');
+    return blob;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentId: string }) {
   const client = useQueryClient();
   const [form, setForm] = useState<MetadataForm>(emptyForm);
@@ -158,6 +190,8 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
   const [uploadError, setUploadError] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [coverStatus, setCoverStatus] = useState('');
+  const [coverError, setCoverError] = useState('');
   const [sourceUrl, setSourceUrl] = useState('');
   const [sourceName, setSourceName] = useState('');
   const [seasonForm, setSeasonForm] = useState({ season_number: '1', title: '', description: '' });
@@ -329,7 +363,7 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
             episode_number: episodeNumber,
             title: episodeForm.title.trim() || `Episode ${episodeNumber}`,
             description: nullable(episodeForm.description),
-            thumbnail_url: nullable(episodeForm.thumbnail_url),
+            thumbnail_url: nullable(episodeForm.thumbnail_url || form.poster_url),
             video_asset_id: assetId,
             orientation: episodeForm.orientation,
             access_type: accessType,
@@ -520,6 +554,37 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
     }
   };
 
+  const uploadCover = async (file: File) => {
+    setCoverError('');
+    setNotice('');
+    setCoverStatus('Preparing cover…');
+    try {
+      if (!file.type.startsWith('image/')) throw new Error('Choose a JPG, PNG or WebP image.');
+      const [poster, backdrop] = await Promise.all([
+        cropCover(file, 900, 1350),
+        cropCover(file, 1600, 900),
+      ]);
+      setCoverStatus('Uploading cover…');
+      const posterResponse = await apiRequest<MediaUpload>(`/content/${contentId}/media?variant=poster`, {
+        method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: poster,
+      });
+      const backdropResponse = await apiRequest<MediaUpload>(`/content/${contentId}/media?variant=backdrop`, {
+        method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: backdrop,
+      });
+      setForm((current) => ({
+        ...current,
+        poster_url: posterResponse.data.url,
+        backdrop_url: backdropResponse.data.url,
+      }));
+      setEpisodeForm((current) => ({ ...current, thumbnail_url: posterResponse.data.url }));
+      setCoverStatus('Cover ready');
+      setNotice('Cover uploaded. Publish when the video is ready.');
+    } catch (error) {
+      setCoverStatus('');
+      setCoverError(errorMessage(error));
+    }
+  };
+
   return (
     <div className="page">
       <PageHeading
@@ -555,10 +620,11 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
               <div className="quick-publish-grid">
                 <div className="form-field"><label>Title *</label><input className="field" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></div>
                 {kind === 'series' ? <div className="form-field"><label>Episode title</label><input className="field" placeholder="Episode title" value={episodeForm.title} onChange={(event) => setEpisodeForm({ ...episodeForm, title: event.target.value })} /></div> : null}
-                <div className="form-field"><label>Poster URL (optional)</label><input className="field" type="url" placeholder="https://…" value={form.poster_url} onChange={(event) => setForm({ ...form, poster_url: event.target.value })} /></div>
+                <div className="form-field"><label>Cover image</label><label className="button button-quiet file-button">{coverStatus || 'Choose cover'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadCover(file); event.target.value = ''; }} /></label></div>
                 <div className="form-field"><label>Access</label><select className="select" value={kind === 'movies' ? form.access_type : episodeForm.access_type} onChange={(event) => kind === 'movies' ? setForm({ ...form, access_type: event.target.value }) : setEpisodeForm({ ...episodeForm, access_type: event.target.value })}><option value="free">Free</option><option value="premium_subscription">Premium</option><option value="coin_unlock">Coins</option><option value="premium_or_coin">Premium or coins</option><option value="ad_unlock">Ad unlock</option></select></div>
-                <div className="form-field"><label>Coin price</label><input className="field" type="number" min="0" value={kind === 'movies' ? form.coin_price : episodeForm.coin_price} onChange={(event) => kind === 'movies' ? setForm({ ...form, coin_price: event.target.value }) : setEpisodeForm({ ...episodeForm, coin_price: event.target.value })} /></div>
+                {['coin_unlock', 'premium_or_coin'].includes(kind === 'movies' ? form.access_type : episodeForm.access_type) ? <div className="form-field"><label>Coin price</label><input className="field" type="number" min="1" value={kind === 'movies' ? form.coin_price : episodeForm.coin_price} onChange={(event) => kind === 'movies' ? setForm({ ...form, coin_price: event.target.value }) : setEpisodeForm({ ...episodeForm, coin_price: event.target.value })} /></div> : null}
               </div>
+              {form.poster_url ? <div className="quick-cover-preview"><img src={form.poster_url} alt="Cover preview" /><span>Your cover will appear in the mobile catalog.</span></div> : null}
               <div className="quick-publish-actions">
                 <label className="button button-accent file-button">
                   {uploadStatus || 'Choose video'}
@@ -568,9 +634,13 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
                 <button className="button button-primary" disabled={quickPublish.isPending || !(form.video_asset_id || episodeForm.video_asset_id)} onClick={() => quickPublish.mutate()}>{quickPublish.isPending ? 'Publishing…' : 'Publish now'}</button>
               </div>
               {uploadError ? <div className="notice">{uploadError}</div> : null}
-              <details className="advanced-toggle"><summary>Advanced settings</summary><p>Metadata, seasons, episode controls and existing video assets remain available below.</p></details>
+              {coverError ? <div className="notice">{coverError}</div> : null}
             </section>
 
+            <details className="advanced-studio">
+              <summary>Advanced settings</summary>
+              <p>Open only when you need metadata, seasons, manual episode controls or existing video assets.</p>
+              <div className="advanced-studio-content">
             <section className="studio-layout">
               <article className="panel">
                 <div className="panel-header"><div><h3>Title &amp; discovery</h3><p>Everything viewers see in the catalog.</p></div></div>
@@ -693,6 +763,8 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
                 {!episodes.isLoading && episodes.data?.length === 0 ? <div className="empty-state compact-empty"><div><strong>No episodes yet</strong><span>Create the first episode with the form above.</span></div></div> : null}
               </section>
             </> : null}
+              </div>
+            </details>
           </>
         ) : null}
       </QueryState>

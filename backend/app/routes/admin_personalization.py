@@ -27,22 +27,20 @@ async def phase10_summary(_: AnalyticsViewer, db: DbSession) -> dict[str, Any]:
     )
     ratings = int(await db.scalar(select(func.count(ContentRating.id))) or 0)
     average_score = float(await db.scalar(select(func.avg(ContentRating.score))) or 0)
-    downloads = dict(
-        (
-            await db.execute(
-                select(DownloadLicense.status, func.count(DownloadLicense.id)).group_by(
-                    DownloadLicense.status
-                )
+    download_rows = (
+        await db.execute(
+            select(DownloadLicense.status, func.count(DownloadLicense.id)).group_by(
+                DownloadLicense.status
             )
-        ).all()
-    )
-    cast_sessions = dict(
-        (
-            await db.execute(
-                select(CastSession.status, func.count(CastSession.id)).group_by(CastSession.status)
-            )
-        ).all()
-    )
+        )
+    ).all()
+    downloads: dict[str, int] = {status: int(count) for status, count in download_rows}
+    cast_rows = (
+        await db.execute(
+            select(CastSession.status, func.count(CastSession.id)).group_by(CastSession.status)
+        )
+    ).all()
+    cast_sessions: dict[str, int] = {status: int(count) for status, count in cast_rows}
     return success(
         {
             "profiles": profiles,

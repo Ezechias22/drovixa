@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request, status
+from fastapi import APIRouter, Body, Header, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import ColumnElement, func, select, update
 
@@ -11,7 +11,7 @@ from app.api.deps import DbSession, require_permission
 from app.core.exceptions import AppError
 from app.models.base import utcnow
 from app.models.catalog import Language
-from app.models.content import Episode, Movie, Season, Subtitle, VideoAsset
+from app.models.content import Content, ContentMedia, Episode, Movie, Season, Subtitle, VideoAsset
 from app.models.enums import ContentStatus, ContentType, EpisodeAccessType, VideoStatus
 from app.models.user import User
 from app.schemas.common import success
@@ -69,6 +69,16 @@ def _meta(page: int, limit: int, total: int) -> dict[str, int]:
     return {"page": page, "limit": limit, "total": total, "pages": (total + limit - 1) // limit}
 
 
+def _image_mime_type(data: bytes) -> str | None:
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
 async def _audit_commit(
     db: DbSession,
     *,
@@ -91,6 +101,68 @@ async def _audit_commit(
         new_value=jsonable_encoder(new) if new is not None else None,
     )
     await db.commit()
+
+
+@router.post("/content/{content_id}/media", status_code=status.HTTP_201_CREATED)
+async def upload_content_media(
+    content_id: UUID,
+    request: Request,
+    admin: Editor,
+    db: DbSession,
+    image_data: Annotated[bytes, Body()],
+    variant: Annotated[str, Query(pattern="^(poster|backdrop|thumbnail)$")] = "poster",
+    public_api_origin: Annotated[
+        str | None, Header(alias="X-Public-API-Origin", max_length=500)
+    ] = None,
+) -> dict[str, Any]:
+    if not image_data or len(image_data) > 1_800_000:
+        raise AppError(
+            "INVALID_IMAGE_SIZE",
+            "Cover images must be between 1 byte and 1.8 MB.",
+            status_code=413,
+        )
+    mime_type = _image_mime_type(image_data)
+    if mime_type is None:
+        raise AppError(
+            "INVALID_IMAGE_TYPE",
+            "Use a JPG, PNG or WebP cover image.",
+            status_code=422,
+        )
+    content = await db.scalar(
+        select(Content).where(Content.id == content_id, Content.deleted_at.is_(None))
+    )
+    if content is None:
+        raise AppError("NOT_FOUND", "Content not found.", status_code=404)
+    row = ContentMedia(
+        content_id=content.id,
+        created_by_id=admin.id,
+        variant=variant,
+        mime_type=mime_type,
+        byte_size=len(image_data),
+        image_data=image_data,
+    )
+    db.add(row)
+    await db.flush()
+    origin = (public_api_origin or str(request.base_url)).rstrip("/")
+    api_prefix = request.url.path.split("/admin/", 1)[0]
+    media_url = f"{origin}{api_prefix}/media/content/{row.id}"
+    add_audit_log(
+        db,
+        admin=admin,
+        request=request,
+        action="content.media_upload",
+        entity_type="content",
+        entity_id=str(content.id),
+        old_value=None,
+        new_value={
+            "media_id": str(row.id),
+            "variant": variant,
+            "mime_type": mime_type,
+            "byte_size": len(image_data),
+        },
+    )
+    await db.commit()
+    return success({"id": row.id, "variant": variant, "url": media_url})
 
 
 @router.get("/series")

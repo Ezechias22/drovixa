@@ -129,6 +129,16 @@ class WalletAdjustmentInput(BaseModel):
         return value
 
 
+class AdminSubscriptionGrantInput(BaseModel):
+    plan_id: UUID
+    days: int = Field(default=30, ge=1, le=3650)
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class AdminSubscriptionRevokeInput(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
 class SubscriptionCancelInput(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 

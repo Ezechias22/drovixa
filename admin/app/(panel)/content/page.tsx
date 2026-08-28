@@ -49,7 +49,7 @@ export default function ContentPage() {
       <PageHeading
         eyebrow="Catalog studio"
         title="Content"
-        description="Create a draft, then open Content Studio to add artwork, videos, seasons and episodes before publishing."
+        description="Enter a title, choose a cover and video, then publish. Advanced options stay hidden unless you open them."
       />
       <section className="panel">
         <div className="toolbar">
@@ -57,7 +57,7 @@ export default function ContentPage() {
           <button className={`button ${type === 'movies' ? 'button-accent' : 'button-quiet'}`} onClick={() => setType('movies')}>Movies</button>
           <span style={{ flex: 1 }} />
           <input className="field" placeholder={`New ${type === 'series' ? 'series' : 'movie'} title`} value={title} onChange={(event) => setTitle(event.target.value)} />
-          <button className="button button-primary" disabled={title.trim().length < 1 || create.isPending} onClick={() => create.mutate()}>Create draft</button>
+          <button className="button button-primary" disabled={title.trim().length < 1 || create.isPending} onClick={() => create.mutate()}>Start publishing</button>
         </div>
         {create.error || archive.error ? <div className="notice">{(create.error ?? archive.error)?.message}</div> : null}
         <QueryState loading={query.isLoading} error={query.error} empty={query.data?.length === 0}>
@@ -73,7 +73,7 @@ export default function ContentPage() {
                     <td><Badge tone={row.premium ? 'accent' : ''}>{row.premium ? 'premium' : row.visibility}</Badge></td>
                     <td>{formatDate(row.published_at)}</td>
                     <td><div className="actions">
-                      <button className="button button-accent" onClick={() => router.push(`/content/${type}/${row.id}`)}>Edit &amp; upload</button>
+                      <button className="button button-accent" onClick={() => router.push(`/content/${type}/${row.id}`)}>Open</button>
                       <button className="button button-danger" onClick={() => window.confirm(`Archive ${row.title}?`) && archive.mutate(row.id)}>Archive</button>
                     </div></td>
                   </tr>

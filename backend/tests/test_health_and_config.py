@@ -8,12 +8,12 @@ async def test_liveness_readiness_and_security_headers(client: AsyncClient) -> N
     root = await client.get("/api/v1")
     assert root.status_code == 200
     assert root.json()["data"]["app"] == "Drovixa"
-    assert root.json()["data"]["version"] == "0.11.0"
+    assert root.json()["data"]["version"] == "0.12.0"
 
     live = await client.get("/api/v1/health/live")
     assert live.status_code == 200
     assert live.json()["data"]["status"] == "ok"
-    assert live.json()["data"]["version"] == "0.11.0"
+    assert live.json()["data"]["version"] == "0.12.0"
     assert live.headers["x-content-type-options"] == "nosniff"
     assert live.headers["x-request-id"]
 

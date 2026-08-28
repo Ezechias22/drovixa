@@ -17,6 +17,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Table,
@@ -133,6 +134,25 @@ class Content(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     movie: Mapped[Movie | None] = relationship(
         back_populates="content", uselist=False, lazy="selectin"
     )
+
+
+class ContentMedia(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "content_media"
+    __table_args__ = (
+        CheckConstraint("byte_size > 0 AND byte_size <= 1800000", name="byte_size_range"),
+        Index("ix_content_media_content_variant", "content_id", "variant"),
+    )
+
+    content_id: Mapped[UUID] = mapped_column(
+        ForeignKey("content.id", ondelete="CASCADE"), index=True
+    )
+    created_by_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    variant: Mapped[str] = mapped_column(String(30), index=True)
+    mime_type: Mapped[str] = mapped_column(String(80))
+    byte_size: Mapped[int] = mapped_column(Integer)
+    image_data: Mapped[bytes] = mapped_column(LargeBinary)
 
 
 class ContentActor(UUIDPrimaryKeyMixin, TimestampMixin, Base):

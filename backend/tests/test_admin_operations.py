@@ -189,3 +189,79 @@ async def test_notification_campaign_dispatch_is_idempotent_and_audited(
         await db.scalar(select(func.count(AuditLog.id)).where(AuditLog.action.ilike("%campaign%")))
         or 0
     ) >= 2
+
+
+async def test_admin_uploads_and_serves_durable_content_cover(
+    client: AsyncClient, db: AsyncSession, admin_headers: dict[str, str]
+) -> None:
+    content = await published_content(db)
+    image = b"\xff\xd8\xff\xe0" + b"drovixa-cover" * 20
+    uploaded = await client.post(
+        f"/api/v1/admin/content/{content.id}/media",
+        params={"variant": "poster"},
+        headers={
+            **admin_headers,
+            "Content-Type": "image/jpeg",
+            "X-Public-API-Origin": "https://api.example.test",
+        },
+        content=image,
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    media_url = uploaded.json()["data"]["url"]
+    assert media_url.startswith("https://api.example.test/api/v1/media/content/")
+    media_id = media_url.rsplit("/", 1)[-1]
+    downloaded = await client.get(f"/api/v1/media/content/{media_id}")
+    assert downloaded.status_code == 200
+    assert downloaded.headers["content-type"] == "image/jpeg"
+    assert downloaded.headers["cross-origin-resource-policy"] == "cross-origin"
+    assert downloaded.content == image
+
+
+async def test_admin_manages_user_coins_and_premium(
+    client: AsyncClient, registered: dict[str, object], admin_headers: dict[str, str]
+) -> None:
+    user_id = registered["user"]["id"]
+    plan = await client.post(
+        "/api/v1/admin/subscription-plans",
+        headers=admin_headers,
+        json={
+            "name": "Admin Premium",
+            "slug": f"admin-premium-{uuid4().hex[:8]}",
+            "interval": "monthly",
+            "price": 9.99,
+            "currency": "USD",
+            "active": True,
+        },
+    )
+    assert plan.status_code == 201, plan.text
+    adjusted = await client.post(
+        f"/api/v1/admin/wallets/{user_id}/adjust",
+        headers={**admin_headers, "Idempotency-Key": "phase124-credit-001"},
+        json={"amount": 250, "bonus_amount": 0, "reason": "Phase 12.4 verification"},
+    )
+    assert adjusted.status_code == 200, adjusted.text
+    assert adjusted.json()["data"]["wallet"]["total_balance"] == 250
+    granted = await client.post(
+        f"/api/v1/admin/users/{user_id}/premium",
+        headers=admin_headers,
+        json={
+            "plan_id": plan.json()["data"]["id"],
+            "days": 30,
+            "reason": "Phase 12.4 verification",
+        },
+    )
+    assert granted.status_code == 200, granted.text
+    assert granted.json()["data"]["provider"] == "admin_grant"
+    overview = await client.get(
+        f"/api/v1/admin/users/{user_id}/monetization", headers=admin_headers
+    )
+    assert overview.status_code == 200
+    assert overview.json()["data"]["wallet"]["total_balance"] == 250
+    assert overview.json()["data"]["subscription"]["status"] == "active"
+    revoked = await client.post(
+        f"/api/v1/admin/users/{user_id}/premium/revoke",
+        headers=admin_headers,
+        json={"reason": "Phase 12.4 verification complete"},
+    )
+    assert revoked.status_code == 200, revoked.text
+    assert revoked.json()["data"]["status"] == "cancelled"

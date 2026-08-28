@@ -73,7 +73,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        response.headers["Cross-Origin-Resource-Policy"] = "same-site"
+        response.headers["Cross-Origin-Resource-Policy"] = (
+            "cross-origin" if "/media/content/" in request.url.path else "same-site"
+        )
         response.headers["Content-Security-Policy"] = (
             API_DOCS_CSP if request.url.path in API_DOC_PATHS else STRICT_API_CSP
         )
