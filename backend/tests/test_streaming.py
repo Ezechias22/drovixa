@@ -297,6 +297,11 @@ async def test_playback_progress_continue_history_and_view_deduplication(
     assert authorization.status_code == 200, authorization.text
     grant = authorization.json()["data"]
     assert grant["hls_url"].endswith("/global/video.m3u8")
+    assert grant["width"] == 1080
+    assert grant["height"] == 1920
+    assert grant["orientation"] == "vertical"
+    assert grant["resume_position_seconds"] == 0
+    assert grant["next_episode_id"] is None
 
     first = await client.post(
         "/api/v1/progress",
@@ -319,6 +324,13 @@ async def test_playback_progress_continue_history_and_view_deduplication(
         },
     )
     assert second.status_code == 200
+    resumed = await client.post(
+        f"/api/v1/playback/{episode.id}/authorize",
+        headers=headers,
+        json={},
+    )
+    assert resumed.status_code == 200, resumed.text
+    assert resumed.json()["data"]["resume_position_seconds"] == 55
     await db.refresh(content)
     assert content.view_count == 1
 
@@ -342,6 +354,54 @@ async def test_playback_progress_continue_history_and_view_deduplication(
     assert (await client.get("/api/v1/continue-watching", headers=headers)).json()["meta"][
         "total"
     ] == 0
+
+
+async def test_playback_grant_links_published_episode_sequence(
+    client: AsyncClient,
+    db: AsyncSession,
+    registered: dict[str, object],
+    fake_provider: FakeVideoProvider,
+) -> None:
+    del fake_provider
+    _, first_episode, _ = await create_published_episode(db)
+    second_asset = VideoAsset(
+        provider="cloudflare_stream",
+        provider_asset_id=uuid4().hex,
+        status=VideoStatus.READY,
+        duration_seconds=90,
+        width=1920,
+        height=1080,
+        playback_id=uuid4().hex,
+        ready_at=utcnow(),
+        asset_metadata={},
+    )
+    second_episode = Episode(
+        series_id=first_episode.series_id,
+        episode_number=2,
+        title="Episode 2",
+        video_asset=second_asset,
+        duration_seconds=90,
+        access_type=EpisodeAccessType.FREE,
+        orientation=Orientation.HORIZONTAL,
+        status=ContentStatus.PUBLISHED,
+        published_at=utcnow(),
+    )
+    db.add_all([second_asset, second_episode])
+    await db.commit()
+    headers = {"Authorization": f"Bearer {registered['access_token']}"}
+
+    first = await client.post(
+        f"/api/v1/playback/{first_episode.id}/authorize", headers=headers, json={}
+    )
+    second = await client.post(
+        f"/api/v1/playback/{second_episode.id}/authorize", headers=headers, json={}
+    )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["data"]["previous_episode_id"] is None
+    assert first.json()["data"]["next_episode_id"] == str(second_episode.id)
+    assert second.json()["data"]["previous_episode_id"] == str(first_episode.id)
+    assert second.json()["data"]["next_episode_id"] is None
 
 
 async def test_guest_geo_and_entitlement_authorization(

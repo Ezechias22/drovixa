@@ -1,3 +1,4 @@
+import base64
 from datetime import timedelta
 
 from httpx import AsyncClient
@@ -62,6 +63,35 @@ async def test_duplicate_registration_and_invalid_login_are_safe(
     )
     assert bad_login.status_code == 401
     assert bad_login.json()["error"]["code"] == "INVALID_CREDENTIALS"
+
+
+async def test_user_can_upload_serve_and_remove_profile_photo(
+    client: AsyncClient, registered: dict[str, object]
+) -> None:
+    headers = auth_header(str(registered["access_token"]))
+    image = b"\x89PNG\r\n\x1a\n" + b"drovixa-avatar" * 8
+    uploaded = await client.post(
+        "/api/v1/users/me/avatar",
+        headers=headers,
+        json={
+            "mime_type": "image/png",
+            "base64_data": base64.b64encode(image).decode("ascii"),
+        },
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    avatar_url = uploaded.json()["data"]["avatar_url"]
+    assert f"/api/v1/media/users/{registered['user']['id']}/avatar" in avatar_url
+
+    photo = await client.get(f"/api/v1/media/users/{registered['user']['id']}/avatar")
+    assert photo.status_code == 200
+    assert photo.headers["content-type"] == "image/png"
+    assert photo.content == image
+
+    removed = await client.delete("/api/v1/users/me/avatar", headers=headers)
+    assert removed.status_code == 200
+    assert removed.json()["data"]["avatar_url"] is None
+    missing = await client.get(f"/api/v1/media/users/{registered['user']['id']}/avatar")
+    assert missing.status_code == 404
 
 
 async def test_refresh_rotation_hashing_and_reuse_revokes_family(

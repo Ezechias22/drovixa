@@ -47,6 +47,12 @@
       "expo-localization",
       "expo-secure-store",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Drovixa uses the photo you choose as your profile picture."
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",

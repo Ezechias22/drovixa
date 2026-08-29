@@ -16,6 +16,7 @@ class UserOut(BaseModel):
     email_verified: bool
     country_code: str | None
     language_code: str | None
+    avatar_url: str | None
     roles: list[str]
     created_at: datetime
 
@@ -29,6 +30,7 @@ class UserOut(BaseModel):
             email_verified=user.email_verified,
             country_code=user.country_code,
             language_code=user.language_code,
+            avatar_url=user.avatar_url,
             roles=sorted(user.role_names),
             created_at=user.created_at,
         )
@@ -48,6 +50,11 @@ class UserUpdateInput(BaseModel):
     @classmethod
     def normalize_language_code(cls, value: str | None) -> str | None:
         return value.lower() if value else None
+
+
+class AvatarUploadInput(BaseModel):
+    mime_type: str = Field(pattern=r"^image/(jpeg|png|webp)$")
+    base64_data: str = Field(min_length=16, max_length=2_600_000)
 
 
 class DeviceOut(BaseModel):

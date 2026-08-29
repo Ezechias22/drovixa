@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 
 import { Badge, PageHeading, QueryState } from '@/components/ui';
@@ -85,6 +86,7 @@ type UploadSession = {
   upload_headers: Record<string, string>;
 };
 type MediaUpload = { id: string; variant: string; url: string };
+type SubtitleRow = { id: string; label: string; format: 'vtt' | 'srt'; file_url: string; is_default: boolean; language: { id: string; code: string; name: string } };
 type MetadataForm = {
   title: string;
   slug: string;
@@ -185,7 +187,10 @@ async function cropCover(file: File, width: number, height: number) {
 
 export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentId: string }) {
   const client = useQueryClient();
+  const searchParams = useSearchParams();
+  const initialShortMode = searchParams.get('mode') === 'short';
   const [form, setForm] = useState<MetadataForm>(emptyForm);
+  const [shortMode, setShortMode] = useState(initialShortMode);
   const [notice, setNotice] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
@@ -197,9 +202,11 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
   const [seasonForm, setSeasonForm] = useState({ season_number: '1', title: '', description: '' });
   const [episodeForm, setEpisodeForm] = useState({
     season_id: '', episode_number: '1', title: '', description: '', thumbnail_url: '',
-    orientation: 'horizontal', access_type: 'free', coin_price: '0', premium: false,
+    orientation: initialShortMode ? 'vertical' : 'horizontal', access_type: 'free', coin_price: '0', premium: false,
     video_asset_id: '',
   });
+  const [subtitleForm, setSubtitleForm] = useState({ language_id: '', label: '', format: 'vtt' as 'vtt' | 'srt', file_url: '', is_default: true });
+  const [subtitleUploadStatus, setSubtitleUploadStatus] = useState('');
 
   const detail = useQuery({
     queryKey: ['content-detail', kind, contentId],
@@ -234,6 +241,12 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
   const assets = useQuery({
     queryKey: ['video-assets'],
     queryFn: async () => (await apiRequest<VideoAsset[]>('/video-assets?page=1&limit=100')).data,
+  });
+  const activeAssetId = kind === 'movies' ? form.video_asset_id : episodeForm.video_asset_id;
+  const subtitles = useQuery({
+    queryKey: ['video-subtitles', activeAssetId],
+    queryFn: async () => (await apiRequest<SubtitleRow[]>(`/subtitles?video_asset_id=${activeAssetId}&page=1&limit=100`)).data,
+    enabled: Boolean(activeAssetId),
   });
 
   useEffect(() => {
@@ -282,13 +295,13 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
       title: savedDraft.title,
       description: savedDraft.description ?? '',
       thumbnail_url: savedDraft.thumbnail_url ?? '',
-      orientation: savedDraft.orientation,
+      orientation: shortMode ? 'vertical' : savedDraft.orientation,
       access_type: savedDraft.access_type,
       coin_price: String(savedDraft.coin_price ?? 0),
       premium: savedDraft.premium,
       video_asset_id: savedDraft.video_asset?.id ?? '',
     }));
-  }, [kind, episodes.data]);
+  }, [kind, episodes.data, shortMode]);
 
   const refreshDetail = () => client.invalidateQueries({ queryKey: ['content-detail', kind, contentId] });
   const refreshSeries = () => {
@@ -386,7 +399,7 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
             description: nullable(episodeForm.description),
             thumbnail_url: nullable(episodeForm.thumbnail_url || form.poster_url),
             video_asset_id: assetId,
-            orientation: episodeForm.orientation,
+            orientation: shortMode ? 'vertical' : episodeForm.orientation,
             access_type: accessType,
             coin_price: coinPrice,
             premium: episodeForm.premium,
@@ -401,7 +414,7 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
             description: nullable(episodeForm.description),
             thumbnail_url: nullable(episodeForm.thumbnail_url || form.poster_url),
             video_asset_id: assetId,
-            orientation: episodeForm.orientation,
+            orientation: shortMode ? 'vertical' : episodeForm.orientation,
             access_type: accessType,
             coin_price: coinPrice,
             premium: episodeForm.premium,
@@ -458,7 +471,7 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
           description: nullable(episodeForm.description),
           thumbnail_url: nullable(episodeForm.thumbnail_url || form.poster_url),
           video_asset_id: asset.id,
-          orientation: episodeForm.orientation,
+          orientation: shortMode ? 'vertical' : episodeForm.orientation,
           access_type: 'free',
           coin_price: 0,
           premium: false,
@@ -510,7 +523,7 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
           series_id: contentId, season_id: nullable(episodeForm.season_id),
           episode_number: Number(episodeForm.episode_number), title: episodeForm.title.trim(),
           description: nullable(episodeForm.description), thumbnail_url: nullable(episodeForm.thumbnail_url),
-          video_asset_id: nullable(episodeForm.video_asset_id), orientation: episodeForm.orientation,
+          video_asset_id: nullable(episodeForm.video_asset_id), orientation: shortMode ? 'vertical' : episodeForm.orientation,
           access_type: episodeForm.access_type, coin_price: Number(episodeForm.coin_price || 0),
           premium: episodeForm.premium,
         }),
@@ -530,10 +543,40 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
     mutationFn: (id: string) => apiRequest(`/episodes/${id}`, { method: 'DELETE' }),
     onSuccess: () => { setNotice('Episode archived.'); refreshSeries(); },
   });
+  const createSubtitle = useMutation({
+    mutationFn: async () => {
+      if (!activeAssetId) throw new Error('Choose a video before adding subtitles.');
+      if (!subtitleForm.language_id || !subtitleForm.label.trim() || !subtitleForm.file_url.startsWith('https://')) {
+        throw new Error('Choose a language, label and direct HTTPS VTT/SRT URL.');
+      }
+      return apiRequest<SubtitleRow>('/subtitles', {
+        method: 'POST',
+        body: JSON.stringify({
+          video_asset_id: activeAssetId,
+          language_id: subtitleForm.language_id,
+          label: subtitleForm.label.trim(),
+          format: subtitleForm.format,
+          file_url: subtitleForm.file_url.trim(),
+          is_default: subtitleForm.is_default,
+          is_auto_generated: false,
+        }),
+      });
+    },
+    onSuccess: () => {
+      setSubtitleForm((current) => ({ ...current, label: '', file_url: '', is_default: false }));
+      setNotice('Subtitle track added to this video.');
+      client.invalidateQueries({ queryKey: ['video-subtitles', activeAssetId] });
+    },
+  });
+  const removeSubtitle = useMutation({
+    mutationFn: (id: string) => apiRequest(`/subtitles/${id}`, { method: 'DELETE' }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['video-subtitles', activeAssetId] }),
+  });
 
   const mutationError = save.error ?? publish.error ?? attachMovieAsset.error ?? createSeason.error
     ?? publishSeason.error ?? archiveSeason.error ?? createEpisode.error ?? publishEpisode.error
-    ?? archiveEpisode.error ?? quickPublish.error ?? persistSeriesAsset.error;
+    ?? archiveEpisode.error ?? quickPublish.error ?? persistSeriesAsset.error
+    ?? createSubtitle.error ?? removeSubtitle.error;
 
   const readyAssets = useMemo(
     () => assets.data?.filter((asset) => asset.status === 'ready') ?? [],
@@ -546,7 +589,13 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
       setForm((current) => ({ ...current, video_asset_id: asset.id }));
       attachMovieAsset.mutate(asset.id);
     } else {
-      setEpisodeForm((current) => ({ ...current, video_asset_id: asset.id }));
+      const detectedVertical = Boolean(asset.width && asset.height && asset.height > asset.width);
+      if (detectedVertical) setShortMode(true);
+      setEpisodeForm((current) => ({
+        ...current,
+        video_asset_id: asset.id,
+        orientation: shortMode || detectedVertical ? 'vertical' : current.orientation,
+      }));
       if (!persistSeriesAsset.isPending) persistSeriesAsset.mutate(asset);
     }
   };
@@ -664,6 +713,30 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
     }
   };
 
+  const uploadSubtitleFile = async (file: File) => {
+    setSubtitleUploadStatus('Uploading subtitle…');
+    try {
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      if (extension !== 'vtt' && extension !== 'srt') throw new Error('Choose a .vtt or .srt subtitle file.');
+      if (file.size < 1 || file.size > 512_000) throw new Error('Subtitle files must be smaller than 500 KB.');
+      const response = await apiRequest<MediaUpload>(`/content/${contentId}/subtitle-file?format=${extension}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: await file.arrayBuffer(),
+      });
+      setSubtitleForm((current) => ({
+        ...current,
+        format: extension,
+        label: current.label || file.name.replace(/\.(vtt|srt)$/i, ''),
+        file_url: response.data.url,
+      }));
+      setSubtitleUploadStatus('File ready — choose language and add track');
+    } catch (error) {
+      setSubtitleUploadStatus('');
+      setNotice(errorMessage(error));
+    }
+  };
+
   return (
     <div className="page">
       <PageHeading
@@ -699,6 +772,7 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
               <div className="quick-publish-grid">
                 <div className="form-field"><label>Title *</label><input className="field" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></div>
                 {kind === 'series' ? <div className="form-field"><label>Episode title</label><input className="field" placeholder="Episode title" value={episodeForm.title} onChange={(event) => setEpisodeForm({ ...episodeForm, title: event.target.value })} /></div> : null}
+                {kind === 'series' ? <label className="check-row"><input type="checkbox" checked={shortMode} onChange={(event) => { setShortMode(event.target.checked); setEpisodeForm((current) => ({ ...current, orientation: event.target.checked ? 'vertical' : 'horizontal' })); }} /> Publish as Short (vertical 9:16)</label> : null}
                 <div className="form-field"><label>Cover image</label><label className="button button-quiet file-button">{coverStatus || 'Choose cover'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadCover(file); event.target.value = ''; }} /></label></div>
                 <div className="form-field"><label>Access</label><select className="select" value={kind === 'movies' ? form.access_type : episodeForm.access_type} onChange={(event) => kind === 'movies' ? setForm({ ...form, access_type: event.target.value }) : setEpisodeForm({ ...episodeForm, access_type: event.target.value })}><option value="free">Free</option><option value="premium_subscription">Premium</option><option value="coin_unlock">Coins</option><option value="premium_or_coin">Premium or coins</option><option value="ad_unlock">Ad unlock</option></select></div>
                 {['coin_unlock', 'premium_or_coin'].includes(kind === 'movies' ? form.access_type : episodeForm.access_type) ? <div className="form-field"><label>Coin price</label><input className="field" type="number" min="1" value={kind === 'movies' ? form.coin_price : episodeForm.coin_price} onChange={(event) => kind === 'movies' ? setForm({ ...form, coin_price: event.target.value }) : setEpisodeForm({ ...episodeForm, coin_price: event.target.value })} /></div> : null}
@@ -801,6 +875,42 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
               </div>
             </section>
 
+            <section className="panel studio-section">
+              <div className="panel-header">
+                <div>
+                  <h3>Subtitles</h3>
+                  <p>Choose a WebVTT or SRT file, select its language, then add it to the video. Viewers can turn it on or off in the player.</p>
+                </div>
+                <Badge tone={activeAssetId ? 'success' : 'warning'}>{activeAssetId ? 'video selected' : 'select a video first'}</Badge>
+              </div>
+              {activeAssetId ? (
+                <>
+                  <div className="form-grid">
+                    <div className="form-field full">
+                      <label>Subtitle file</label>
+                      <label className="button button-quiet file-button">{subtitleUploadStatus || 'Choose .vtt or .srt'}<input type="file" accept=".vtt,.srt,text/vtt,application/x-subrip" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadSubtitleFile(file); event.target.value = ''; }} /></label>
+                    </div>
+                    <div className="form-field">
+                      <label>Language</label>
+                      <select className="select" value={subtitleForm.language_id} onChange={(event) => setSubtitleForm({ ...subtitleForm, language_id: event.target.value })}>
+                        <option value="">Choose language</option>
+                        {languages.data?.filter((item) => item.active !== false).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-field"><label>Viewer label</label><input className="field" placeholder="English CC" value={subtitleForm.label} onChange={(event) => setSubtitleForm({ ...subtitleForm, label: event.target.value })} /></div>
+                    <div className="form-field"><label>Format</label><select className="select" value={subtitleForm.format} onChange={(event) => setSubtitleForm({ ...subtitleForm, format: event.target.value as 'vtt' | 'srt' })}><option value="vtt">WebVTT (.vtt)</option><option value="srt">SubRip (.srt)</option></select></div>
+                    <div className="form-field full"><label>Subtitle URL (filled automatically after upload)</label><input className="field" type="url" placeholder="Choose a subtitle file above, or paste a direct HTTPS URL" value={subtitleForm.file_url} onChange={(event) => setSubtitleForm({ ...subtitleForm, file_url: event.target.value })} /></div>
+                    <label className="check-row"><input type="checkbox" checked={subtitleForm.is_default} onChange={(event) => setSubtitleForm({ ...subtitleForm, is_default: event.target.checked })} /> Default track for this video</label>
+                    <button className="button button-accent" disabled={createSubtitle.isPending} onClick={() => createSubtitle.mutate()}>{createSubtitle.isPending ? 'Adding…' : 'Add subtitle track'}</button>
+                  </div>
+                  <div className="record-list">
+                    {subtitles.data?.map((subtitle) => <div className="record-card" key={subtitle.id}><div className="primary-cell"><strong>{subtitle.label}</strong><small>{subtitle.language.name} · {subtitle.format.toUpperCase()}{subtitle.is_default ? ' · default' : ''}</small></div><a className="button button-quiet" href={subtitle.file_url} target="_blank" rel="noreferrer">Open file</a><button className="button button-danger" disabled={removeSubtitle.isPending} onClick={() => window.confirm(`Remove ${subtitle.label}?`) && removeSubtitle.mutate(subtitle.id)}>Remove</button></div>)}
+                    {!subtitles.isLoading && subtitles.data?.length === 0 ? <div className="empty-state compact-empty"><div><strong>No subtitle tracks yet</strong><span>Add a direct VTT or SRT URL above.</span></div></div> : null}
+                  </div>
+                </>
+              ) : <div className="notice warning-note">Choose or upload the movie/episode video first. Subtitle tracks stay attached to that exact video.</div>}
+            </section>
+
             {kind === 'series' ? <>
               <section className="studio-layout studio-section">
                 <article className="panel">
@@ -835,7 +945,7 @@ export function ContentStudio({ kind, contentId }: { kind: ContentKind; contentI
                 <div className="panel-header"><div><h3>Episodes</h3><p>Publish only after the attached Mux asset is ready.</p></div><Badge>{episodes.data?.length ?? 0} total</Badge></div>
                 <div className="record-list">{episodes.data?.map((episode) => <div className="record-card episode-card" key={episode.id}>
                   {episode.thumbnail_url || episode.video_asset?.thumbnail_url ? <img src={episode.thumbnail_url || episode.video_asset?.thumbnail_url || ''} alt="Episode thumbnail" /> : <div className="asset-placeholder">E{episode.episode_number}</div>}
-                  <div className="primary-cell"><strong>Episode {episode.episode_number} · {episode.title}</strong><small>{episode.season_id ? `Season attached · ` : ''}{episode.access_type} · {episode.video_asset ? `video ${episode.video_asset.status}` : 'no video'}</small></div>
+                  <div className="primary-cell"><strong>Episode {episode.episode_number} · {episode.title}</strong><small>{episode.orientation === 'vertical' ? 'SHORT · ' : ''}{episode.season_id ? `Season attached · ` : ''}{episode.access_type} · {episode.video_asset ? `video ${episode.video_asset.status}` : 'no video'}</small></div>
                   <Badge tone={episode.status === 'published' ? 'success' : 'warning'}>{episode.status}</Badge>
                   <div className="actions">{episode.status !== 'published' ? <button className="button button-primary" disabled={episode.video_asset?.status !== 'ready'} title={episode.video_asset?.status !== 'ready' ? 'Attach a ready video first' : ''} onClick={() => publishEpisode.mutate(episode.id)}>Publish</button> : null}<button className="button button-danger" onClick={() => window.confirm(`Archive ${episode.title}?`) && archiveEpisode.mutate(episode.id)}>Archive</button></div>
                 </div>)}</div>

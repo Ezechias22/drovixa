@@ -8,6 +8,7 @@ import { AnimatedDrovixaSplash } from '@/components/AnimatedDrovixaSplash';
 import { useI18n, useLanguageStore } from '@/i18n';
 import { useAuthStore } from '@/stores/auth-store';
 import { usePlaybackStore } from '@/stores/playback-store';
+import { useSubtitleStore } from '@/stores/subtitle-store';
 import { useProfileStore } from '@/stores/profile-store';
 import { PushNotificationsBridge } from '@/services/push-notifications';
 import { colors } from '@/theme';
@@ -31,6 +32,8 @@ function RootLayout() {
   const hydrateLanguage = useLanguageStore((state) => state.hydrate);
   const playbackHydrated = usePlaybackStore((state) => state.hydrated);
   const hydratePlayback = usePlaybackStore((state) => state.hydrate);
+  const subtitleHydrated = useSubtitleStore((state) => state.hydrated);
+  const hydrateSubtitles = useSubtitleStore((state) => state.hydrate);
   const [introComplete, setIntroComplete] = useState(false);
   const [client] = useState(
     () =>
@@ -47,11 +50,12 @@ function RootLayout() {
     void hydrateProfile();
     void hydrateLanguage();
     void hydratePlayback();
-  }, [hydrate, hydrateLanguage, hydratePlayback, hydrateProfile]);
+    void hydrateSubtitles();
+  }, [hydrate, hydrateLanguage, hydratePlayback, hydrateProfile, hydrateSubtitles]);
 
   const finishIntro = useCallback(() => setIntroComplete(true), []);
 
-  if (!hydrated || !profileHydrated || !languageHydrated || !playbackHydrated || !introComplete) {
+  if (!hydrated || !profileHydrated || !languageHydrated || !playbackHydrated || !subtitleHydrated || !introComplete) {
     return <AnimatedDrovixaSplash onFinished={finishIntro} />;
   }
 
@@ -77,6 +81,7 @@ function RootLayout() {
           <Stack.Screen name="downloads" options={{ title: t('profile.downloads') }} />
           <Stack.Screen name="language" options={{ title: t('language.title') }} />
           <Stack.Screen name="playback-settings" options={{ title: t('playback.title') }} />
+          <Stack.Screen name="subtitles" options={{ title: t('profile.subtitles') }} />
           <Stack.Screen name="security" options={{ title: t('security.title') }} />
           <Stack.Screen name="help" options={{ title: t('help.title') }} />
           <Stack.Screen name="growth" options={{ title: 'Rewards & referrals' }} />

@@ -226,6 +226,30 @@ async def test_admin_uploads_and_serves_durable_content_cover(
     assert downloaded.content == image
 
 
+async def test_admin_uploads_and_serves_real_subtitle_file(
+    client: AsyncClient, db: AsyncSession, admin_headers: dict[str, str]
+) -> None:
+    content = await published_content(db)
+    subtitle = b"WEBVTT\n\n00:00:01.000 --> 00:00:03.500\nBonjou Drovixa\n"
+    uploaded = await client.post(
+        f"/api/v1/admin/content/{content.id}/subtitle-file",
+        params={"format": "vtt"},
+        headers={
+            **admin_headers,
+            "Content-Type": "application/octet-stream",
+            "X-Public-API-Origin": "https://api.example.test",
+        },
+        content=subtitle,
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    media_url = uploaded.json()["data"]["url"]
+    media_id = media_url.rsplit("/", 1)[-1]
+    downloaded = await client.get(f"/api/v1/media/content/{media_id}")
+    assert downloaded.status_code == 200
+    assert downloaded.headers["content-type"].startswith("text/vtt")
+    assert downloaded.content == subtitle
+
+
 async def test_admin_manages_user_coins_and_premium(
     client: AsyncClient, registered: dict[str, object], admin_headers: dict[str, str]
 ) -> None:

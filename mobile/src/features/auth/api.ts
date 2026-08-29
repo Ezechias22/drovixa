@@ -3,3 +3,5 @@ type SessionResponse={access_token:string;refresh_token:string;expires_in:number
 export async function socialLogin(provider:'google'|'apple',idToken:string,displayName?:string){return(await apiClient.post<ApiEnvelope<SessionResponse>>('/auth/social',{provider,id_token:idToken,display_name:displayName,device:await device()})).data.data}
 export async function changePassword(currentPassword:string,newPassword:string){await apiClient.post('/auth/change-password',{current_password:currentPassword,new_password:newPassword})}
 export async function logoutAll(){await unregisterCurrentPushToken().catch(()=>undefined);await apiClient.post('/auth/logout-all')}
+export async function uploadProfilePhoto(mimeType:string,base64Data:string){return(await apiClient.post<ApiEnvelope<UserData>>('/users/me/avatar',{mime_type:mimeType,base64_data:base64Data},{timeout:30000})).data.data}
+export async function deleteProfilePhoto(){return(await apiClient.delete<ApiEnvelope<UserData>>('/users/me/avatar')).data.data}

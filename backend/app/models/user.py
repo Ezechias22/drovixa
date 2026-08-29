@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
-from sqlalchemy import Enum, Index, String
+from sqlalchemy import Enum, ForeignKey, Index, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
@@ -34,6 +35,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     email_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
     country_code: Mapped[str | None] = mapped_column(String(2), index=True)
     language_code: Mapped[str | None] = mapped_column(String(16), index=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(2048))
 
     roles: Mapped[list[Role]] = relationship(
         secondary=user_roles, back_populates="users", lazy="selectin"
@@ -52,3 +54,13 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     @property
     def role_names(self) -> set[str]:
         return {role.name for role in self.roles}
+
+
+class UserAvatar(TimestampMixin, Base):
+    __tablename__ = "user_avatars"
+
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    mime_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    image_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)

@@ -1,17 +1,23 @@
+import base64
+import binascii
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from sqlalchemy import select
 
 from app.api.deps import CurrentContext, DbSession
+from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.models.auth import Device, UserSession
+from app.models.base import utcnow
+from app.models.user import UserAvatar
 from app.schemas.common import success
-from app.schemas.user import DeviceOut, UserOut, UserUpdateInput
+from app.schemas.user import AvatarUploadInput, DeviceOut, UserOut, UserUpdateInput
 from app.services.auth import revoke_session
 
 router = APIRouter(prefix="/users", tags=["Users"])
+MAX_AVATAR_BYTES = 1_800_000
 
 
 @router.get("/me")
@@ -26,6 +32,53 @@ async def update_me(
     changes = payload.model_dump(exclude_unset=True)
     for key, value in changes.items():
         setattr(context.user, key, value.strip() if isinstance(value, str) else value)
+    await db.commit()
+    return success(UserOut.from_user(context.user))
+
+
+@router.post("/me/avatar")
+async def upload_avatar(
+    payload: AvatarUploadInput, request: Request, context: CurrentContext, db: DbSession
+) -> dict[str, Any]:
+    try:
+        image_data = base64.b64decode(payload.base64_data, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise AppError(
+            "VALIDATION_ERROR", "The profile photo is invalid.", status_code=422
+        ) from exc
+    if not image_data or len(image_data) > MAX_AVATAR_BYTES:
+        raise AppError(
+            "VALIDATION_ERROR",
+            "The profile photo must be smaller than 1.8 MB.",
+            status_code=422,
+        )
+    avatar = await db.get(UserAvatar, context.user.id)
+    if avatar is None:
+        avatar = UserAvatar(
+            user_id=context.user.id,
+            mime_type=payload.mime_type,
+            image_data=image_data,
+        )
+        db.add(avatar)
+    else:
+        avatar.mime_type = payload.mime_type
+        avatar.image_data = image_data
+    version = int(utcnow().timestamp())
+    origin = str(request.base_url).rstrip("/")
+    context.user.avatar_url = (
+        f"{origin}{get_settings().API_V1_PREFIX}/media/users/"
+        f"{context.user.id}/avatar?v={version}"
+    )
+    await db.commit()
+    return success(UserOut.from_user(context.user))
+
+
+@router.delete("/me/avatar")
+async def delete_avatar(context: CurrentContext, db: DbSession) -> dict[str, Any]:
+    avatar = await db.get(UserAvatar, context.user.id)
+    if avatar is not None:
+        await db.delete(avatar)
+    context.user.avatar_url = None
     await db.commit()
     return success(UserOut.from_user(context.user))
 

@@ -55,7 +55,7 @@ from app.models.streaming import (
     WatchHistory,
     WatchProgress,
 )
-from app.models.user import User
+from app.models.user import User, UserAvatar
 
 __all__ = [
     "Actor",
@@ -115,6 +115,7 @@ __all__ = [
     "Subtitle",
     "Tag",
     "User",
+    "UserAvatar",
     "UserEntitlement",
     "UserMute",
     "UserSession",

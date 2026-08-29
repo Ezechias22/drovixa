@@ -18,7 +18,7 @@ from app.core.network import client_ip
 from app.integrations.videos.base import VideoProvider
 from app.models.base import utcnow
 from app.models.configuration import FeatureFlag
-from app.models.content import Content, Episode, Movie, Series, VideoAsset
+from app.models.content import Content, Episode, Movie, Series, Subtitle, VideoAsset
 from app.models.enums import (
     ContentStatus,
     ContentType,
@@ -26,6 +26,7 @@ from app.models.enums import (
     EpisodeAccessType,
     VideoStatus,
 )
+from app.models.experience import Favorite
 from app.models.streaming import (
     PlaybackSession,
     UserEntitlement,
@@ -195,7 +196,9 @@ async def _episode_target(
         .where(Episode.id == episode_id, Episode.deleted_at.is_(None))
         .options(
             joinedload(Episode.series).joinedload(Series.content),
-            joinedload(Episode.video_asset).selectinload(VideoAsset.subtitles),
+            joinedload(Episode.video_asset)
+            .selectinload(VideoAsset.subtitles)
+            .selectinload(Subtitle.language),
         )
     )
     if episode is None or episode.status != ContentStatus.PUBLISHED:
@@ -223,7 +226,12 @@ async def _movie_target(
     movie = await db.scalar(
         select(Movie)
         .where(Movie.id == movie_id)
-        .options(joinedload(Movie.content), joinedload(Movie.video_asset))
+        .options(
+            joinedload(Movie.content),
+            joinedload(Movie.video_asset)
+            .selectinload(VideoAsset.subtitles)
+            .selectinload(Subtitle.language),
+        )
     )
     if movie is None:
         raise AppError("NOT_FOUND", "Movie not found.", status_code=404)
@@ -325,6 +333,48 @@ async def authorize_playback(
     )
     db.add(playback)
     await db.flush()
+    resume_position_seconds = 0
+    is_favorite = False
+    if context is not None:
+        progress = await db.scalar(
+            select(WatchProgress).where(
+                WatchProgress.user_id == context.user.id,
+                WatchProgress.content_id == content.id,
+                WatchProgress.episode_id == (episode.id if episode else None),
+            )
+        )
+        if progress is not None and not progress.completed:
+            resume_position_seconds = max(0, progress.position_seconds)
+        is_favorite = (
+            await db.scalar(
+                select(Favorite.id).where(
+                    Favorite.user_id == context.user.id,
+                    Favorite.content_id == content.id,
+                )
+            )
+            is not None
+        )
+    previous_episode_id = None
+    next_episode_id = None
+    if episode is not None:
+        published_episode = (
+            Episode.series_id == episode.series_id,
+            Episode.deleted_at.is_(None),
+            Episode.status == ContentStatus.PUBLISHED,
+            or_(Episode.published_at.is_(None), Episode.published_at <= utcnow()),
+        )
+        previous_episode_id = await db.scalar(
+            select(Episode.id)
+            .where(*published_episode, Episode.episode_number < episode.episode_number)
+            .order_by(Episode.episode_number.desc())
+            .limit(1)
+        )
+        next_episode_id = await db.scalar(
+            select(Episode.id)
+            .where(*published_episode, Episode.episode_number > episode.episode_number)
+            .order_by(Episode.episode_number.asc())
+            .limit(1)
+        )
     await db.commit()
     subtitle_tracks = [
         {
@@ -347,11 +397,23 @@ async def authorize_playback(
         "dash_url": grant.dash_url,
         "expires_at": grant.expires_at,
         "duration_seconds": asset.duration_seconds,
+        "width": asset.width,
+        "height": asset.height,
+        "aspect_ratio": asset.aspect_ratio,
+        "orientation": episode.orientation if episode else (
+            "vertical"
+            if asset.width and asset.height and asset.height > asset.width
+            else "horizontal"
+        ),
         "title": episode.title if episode else content.title,
         "content_title": content.title,
         "poster_url": episode.thumbnail_url if episode else content.poster_url,
         "profile_id": profile.id if profile else None,
         "autoplay_next": profile.autoplay_next if profile else True,
+        "resume_position_seconds": resume_position_seconds,
+        "previous_episode_id": previous_episode_id,
+        "next_episode_id": next_episode_id,
+        "is_favorite": is_favorite,
         "subtitles": subtitle_tracks,
         "progress_sync_interval_seconds": get_settings().PROGRESS_SYNC_INTERVAL_SECONDS,
     }

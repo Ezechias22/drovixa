@@ -91,22 +91,29 @@ export async function downloadForOffline(input: {
   const grant = await authorizeWithPreparationRetry(path, input.onProgress);
   await FileSystem.makeDirectoryAsync(DIRECTORY, { intermediates: true });
   const localUri = `${DIRECTORY}${grant.id}.mp4`;
-  await apiClient.patch(`/downloads/${grant.id}`, { status: 'downloading', bytes_downloaded: 0 });
+  const temporaryUri = `${localUri}.part`;
+  await FileSystem.deleteAsync(temporaryUri, { idempotent: true });
+  await apiClient.patch(`/downloads/${grant.id}`, { status: 'downloading', bytes_downloaded: 0 }).catch(() => undefined);
   try {
     const resumable = FileSystem.createDownloadResumable(
       grant.download_url,
-      localUri,
+      temporaryUri,
       {},
       ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
         const percent = totalBytesExpectedToWrite > 0
-          ? Math.min(100, Math.round((totalBytesWritten / totalBytesExpectedToWrite) * 100))
+          ? Math.min(99, Math.round((totalBytesWritten / totalBytesExpectedToWrite) * 100))
           : 0;
         input.onProgress?.({ phase: 'downloading', percent });
       },
     );
     const result = await resumable.downloadAsync();
     if (!result?.uri) throw new Error('The video download did not produce a local file.');
-    const info = await FileSystem.getInfoAsync(result.uri);
+    const partialInfo = await FileSystem.getInfoAsync(result.uri);
+    const partialBytes = partialInfo.exists && 'size' in partialInfo ? partialInfo.size : 0;
+    if (partialBytes < 1) throw new Error('The downloaded video file is empty.');
+    await FileSystem.deleteAsync(localUri, { idempotent: true });
+    await FileSystem.moveAsync({ from: result.uri, to: localUri });
+    const info = await FileSystem.getInfoAsync(localUri);
     const bytes = info.exists && 'size' in info ? info.size : 0;
     const item: OfflineDownload = {
       id: grant.id,
@@ -114,7 +121,7 @@ export async function downloadForOffline(input: {
       episodeId: grant.episode_id,
       title: input.title,
       posterUrl: input.posterUrl,
-      localUri: result.uri,
+      localUri,
       expiresAt: grant.expires_at,
       quality: grant.quality,
       bytes,
@@ -123,13 +130,14 @@ export async function downloadForOffline(input: {
     input.onProgress?.({ phase: 'saving', percent: 100 });
     const items = (await readIndex()).filter((entry) => entry.id !== item.id);
     await writeIndex([item, ...items]);
-    await apiClient.patch(`/downloads/${grant.id}`, {
+    void apiClient.patch(`/downloads/${grant.id}`, {
       status: 'ready',
       bytes_downloaded: bytes,
-    });
+    }, { timeout: 10_000 }).catch(() => undefined);
     return item;
   } catch (error) {
-    await apiClient.patch(`/downloads/${grant.id}`, { status: 'failed', bytes_downloaded: 0 });
+    await FileSystem.deleteAsync(temporaryUri, { idempotent: true });
+    void apiClient.patch(`/downloads/${grant.id}`, { status: 'failed', bytes_downloaded: 0 }, { timeout: 10_000 }).catch(() => undefined);
     throw error;
   }
 }

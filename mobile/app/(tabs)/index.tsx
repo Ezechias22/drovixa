@@ -6,22 +6,42 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PageHeader } from '@/components/PageHeader';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ScreenStates';
-import { getDiscover } from '@/features/catalog/api';
+import { getDiscover, getEpisodes } from '@/features/catalog/api';
 import type { ContentCardData } from '@/features/catalog/types';
 import { useI18n } from '@/i18n';
 import { colors } from '@/theme';
+import { usePlaybackStore } from '@/stores/playback-store';
 
 type Feed = 'popular' | 'new' | 'series';
 
 function PosterCard({ item }: { item: ContentCardData }) {
   const { t } = useI18n();
   const router = useRouter();
-  const open = () => router.push({
-    pathname: item.type === 'series' ? '/series/[slug]' : '/movie/[slug]',
-    params: { slug: item.slug },
-  });
+  const [opening, setOpening] = useState(false);
+  const open = async () => {
+    if (opening) return;
+    setOpening(true);
+    try {
+      if (item.type === 'movie' && item.movie_id) {
+        router.push({ pathname: '/watch/[id]', params: { id: item.movie_id, target: 'movie' } });
+        return;
+      }
+      if (item.type === 'series' && item.series_id) {
+        const episodes = await getEpisodes(item.series_id);
+        const remembered = usePlaybackStore.getState().lastEpisodeBySeries[item.series_id];
+        const selected = episodes.find((episode) => episode.id === remembered) ?? episodes[0];
+        if (selected) {
+          router.push({ pathname: '/watch/[id]', params: { id: selected.id, target: 'episode' } });
+          return;
+        }
+      }
+      router.push({ pathname: item.type === 'series' ? '/series/[slug]' : '/movie/[slug]', params: { slug: item.slug } });
+    } finally {
+      setOpening(false);
+    }
+  };
   return (
-    <Pressable onPress={open} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
+    <Pressable disabled={opening} onPress={() => void open()} style={({ pressed }) => [styles.card, (pressed || opening) && styles.pressed]}>
       <View style={styles.poster}>
         {item.poster_url ? <Image source={{ uri: item.poster_url }} resizeMode="cover" style={styles.posterImage} /> : (
           <View style={styles.fallback}><Text style={styles.fallbackLetter}>D</Text><Text style={styles.fallbackName}>DROVIXA</Text></View>

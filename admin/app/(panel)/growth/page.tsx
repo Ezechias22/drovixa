@@ -5,8 +5,72 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHeading, QueryState, StatCard } from '@/components/ui';
 import { apiRequest } from '@/lib/api';
 
-type Summary={active_ads:number;ad_impressions:number;ad_completions:number;daily_claims:number;qualified_referrals:number;active_watch_parties:number;growth_events:number};
-type Ad={id:string;key:string;name:string;headline:string;placement:string;format:string;reward_coins:number;daily_cap:number;active:boolean};
-type Automation={id:string;name:string;trigger_event:string;cooldown_hours:number;active:boolean;last_triggered_at:string|null};
+type Summary = {
+  daily_claims: number;
+  qualified_referrals: number;
+  active_watch_parties: number;
+  ad_completions: number;
+  ad_impressions: number;
+};
 
-export default function GrowthPage(){const client=useQueryClient();const summary=useQuery({queryKey:['growth-summary'],queryFn:async()=>(await apiRequest<Summary>('/growth/summary')).data});const ads=useQuery({queryKey:['growth-ads'],queryFn:async()=>(await apiRequest<Ad[]>('/growth/ads')).data});const automations=useQuery({queryKey:['growth-automations'],queryFn:async()=>(await apiRequest<Automation[]>('/growth/automations')).data});const toggle=useMutation({mutationFn:({id,active}:{id:string;active:boolean})=>apiRequest(`/growth/automations/${id}`,{method:'PATCH',body:JSON.stringify({active})}),onSuccess:()=>client.invalidateQueries({queryKey:['growth-automations']})});return <div className="page"><PageHeading eyebrow="Phase 11" title="Growth & Watch Party" description="Ads, rewards, referrals, social acquisition and watch-together activity in one operational view."/><QueryState loading={summary.isLoading} error={summary.error}>{summary.data?<><section className="grid-stats"><StatCard label="Daily claims" value={summary.data.daily_claims} detail="Coin streak rewards" color="#f59e0b"/><StatCard label="Qualified referrals" value={summary.data.qualified_referrals} detail="Rewarded invites" color="#22c55e"/><StatCard label="Watch Parties" value={summary.data.active_watch_parties} detail="Active rooms" color="#8b5cf6"/><StatCard label="Ad completions" value={summary.data.ad_completions} detail={`${summary.data.ad_impressions} impressions`} color="#ff3d71"/></section><section className="content-grid"><article className="panel"><div className="panel-header"><div><h3>Ad inventory</h3><p>Server-issued, capped delivery campaigns</p></div></div><div className="warning-list">{ads.data?.map(ad=><div className="warning-row" key={ad.id}><span><strong>{ad.name}</strong><small style={{display:'block',opacity:.6}}>{ad.placement} · {ad.format} · cap {ad.daily_cap}</small></span><span className="badge">{ad.active?'active':'paused'}</span></div>)}</div></article><article className="panel"><div className="panel-header"><div><h3>Growth automations</h3><p>Event-triggered in-app notifications</p></div></div><div className="warning-list">{automations.data?.map(row=><div className="warning-row" key={row.id}><span><strong>{row.name}</strong><small style={{display:'block',opacity:.6}}>{row.trigger_event} · {row.cooldown_hours}h cooldown</small></span><button className="secondary-button" onClick={()=>toggle.mutate({id:row.id,active:!row.active})}>{row.active?'Disable':'Enable'}</button></div>)}</div></article></section></>:null}</QueryState></div>}
+type Ad = { id: string; name: string; placement: string; format: string; daily_cap: number; active: boolean };
+type Automation = { id: string; name: string; trigger_event: string; cooldown_hours: number; active: boolean };
+
+export default function GrowthPage() {
+  const client = useQueryClient();
+  const summary = useQuery({
+    queryKey: ['growth-summary'],
+    queryFn: async () => (await apiRequest<Summary>('/growth/summary')).data,
+  });
+  const ads = useQuery({
+    queryKey: ['growth-ads'],
+    queryFn: async () => (await apiRequest<Ad[]>('/growth/ads')).data,
+  });
+  const automations = useQuery({
+    queryKey: ['growth-automations'],
+    queryFn: async () => (await apiRequest<Automation[]>('/growth/automations')).data,
+  });
+  const toggle = useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) => apiRequest(`/growth/automations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ active }),
+    }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['growth-automations'] }),
+  });
+
+  return (
+    <div className="page">
+      <PageHeading
+        eyebrow="Audience growth"
+        title="Growth & Watch Party"
+        description="Ads, rewards, referrals, social acquisition and watch-together activity in one operational view."
+      />
+      <QueryState loading={summary.isLoading} error={summary.error}>
+        {summary.data ? (
+          <>
+            <section className="grid-stats">
+              <StatCard label="Daily claims" value={summary.data.daily_claims} detail="Coin streak rewards" color="#f59e0b" />
+              <StatCard label="Qualified referrals" value={summary.data.qualified_referrals} detail="Rewarded invites" color="#22c55e" />
+              <StatCard label="Watch Parties" value={summary.data.active_watch_parties} detail="Active rooms" color="#8b5cf6" />
+              <StatCard label="Ad completions" value={summary.data.ad_completions} detail={`${summary.data.ad_impressions} impressions`} color="#ff3d71" />
+            </section>
+            <section className="content-grid">
+              <article className="panel">
+                <div className="panel-header"><div><h3>Ad inventory</h3><p>Server-issued, capped delivery campaigns</p></div></div>
+                <div className="warning-list">
+                  {ads.data?.map((ad) => <div className="warning-row" key={ad.id}><span><strong>{ad.name}</strong><small style={{ display: 'block', opacity: 0.6 }}>{ad.placement} · {ad.format} · cap {ad.daily_cap}</small></span><span className="badge">{ad.active ? 'active' : 'paused'}</span></div>)}
+                </div>
+              </article>
+              <article className="panel">
+                <div className="panel-header"><div><h3>Growth automations</h3><p>Event-triggered in-app notifications</p></div></div>
+                <div className="warning-list">
+                  {automations.data?.map((row) => <div className="warning-row" key={row.id}><span><strong>{row.name}</strong><small style={{ display: 'block', opacity: 0.6 }}>{row.trigger_event} · {row.cooldown_hours}h cooldown</small></span><button className="secondary-button" onClick={() => toggle.mutate({ id: row.id, active: !row.active })}>{row.active ? 'Disable' : 'Enable'}</button></div>)}
+                </div>
+              </article>
+            </section>
+          </>
+        ) : null}
+      </QueryState>
+    </div>
+  );
+}

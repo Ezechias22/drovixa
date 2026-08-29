@@ -129,7 +129,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </button>
             <h1>{title}</h1>
           </div>
-          <span className="topbar-meta">Phase 11 · Growth, rewards & Watch Party</span>
+          <span className="topbar-meta">Drovixa · Production control</span>
         </header>
         {children}
       </main>

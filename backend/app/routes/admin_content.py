@@ -170,6 +170,76 @@ async def upload_content_media(
     return success({"id": row.id, "variant": variant, "url": media_url})
 
 
+@router.post("/content/{content_id}/subtitle-file", status_code=status.HTTP_201_CREATED)
+async def upload_subtitle_file(
+    content_id: UUID,
+    request: Request,
+    admin: Editor,
+    db: DbSession,
+    subtitle_data: Annotated[bytes, Body()],
+    subtitle_format: Annotated[str, Query(alias="format", pattern="^(vtt|srt)$")],
+    public_api_origin: Annotated[
+        str | None, Header(alias="X-Public-API-Origin", max_length=500)
+    ] = None,
+) -> dict[str, Any]:
+    if not subtitle_data or len(subtitle_data) > 512_000:
+        raise AppError(
+            "INVALID_SUBTITLE_SIZE",
+            "Subtitle files must be between 1 byte and 500 KB.",
+            status_code=413,
+        )
+    try:
+        text = subtitle_data.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise AppError(
+            "INVALID_SUBTITLE_FILE",
+            "Use a UTF-8 WebVTT or SRT subtitle file.",
+            status_code=422,
+        ) from exc
+    if "-->" not in text:
+        raise AppError(
+            "INVALID_SUBTITLE_FILE",
+            "The selected file does not contain valid subtitle timestamps.",
+            status_code=422,
+        )
+    content = await db.scalar(
+        select(Content).where(Content.id == content_id, Content.deleted_at.is_(None))
+    )
+    if content is None:
+        raise AppError("NOT_FOUND", "Content not found.", status_code=404)
+    normalized = text.replace("\r\n", "\n").encode("utf-8")
+    mime_type = (
+        "text/vtt; charset=utf-8"
+        if subtitle_format == "vtt"
+        else "application/x-subrip; charset=utf-8"
+    )
+    row = ContentMedia(
+        content_id=content.id,
+        created_by_id=admin.id,
+        variant="subtitle",
+        mime_type=mime_type,
+        byte_size=len(normalized),
+        image_data=normalized,
+    )
+    db.add(row)
+    await db.flush()
+    origin = (public_api_origin or str(request.base_url)).rstrip("/")
+    api_prefix = request.url.path.split("/admin/", 1)[0]
+    media_url = f"{origin}{api_prefix}/media/content/{row.id}"
+    add_audit_log(
+        db,
+        admin=admin,
+        request=request,
+        action="subtitle.file_upload",
+        entity_type="content",
+        entity_id=str(content.id),
+        old_value=None,
+        new_value={"media_id": str(row.id), "format": subtitle_format, "url": media_url},
+    )
+    await db.commit()
+    return success({"id": row.id, "variant": "subtitle", "url": media_url})
+
+
 @router.get("/series")
 async def admin_series(
     _: Viewer, db: DbSession, page: Page = 1, limit: Limit = 20
