@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AutomaticAppUpdater } from '@/components/AutomaticAppUpdater';
 import { AnimatedDrovixaSplash } from '@/components/AnimatedDrovixaSplash';
 import { useI18n, useLanguageStore } from '@/i18n';
 import { useAuthStore } from '@/stores/auth-store';
@@ -63,6 +64,7 @@ function RootLayout() {
     <SafeAreaProvider>
       <QueryClientProvider client={client}>
         <PushNotificationsBridge />
+        <AutomaticAppUpdater />
         <StatusBar style="light" />
         <Stack
           screenOptions={{
