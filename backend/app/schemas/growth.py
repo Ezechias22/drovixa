@@ -14,6 +14,10 @@ class AdEventInput(BaseModel):
     event_type: Literal["impression", "click", "completed"]
 
 
+class RewardedAdSessionInput(BaseModel):
+    platform: Literal["android", "ios"]
+
+
 class ReferralApplyInput(BaseModel):
     code: str = Field(min_length=4, max_length=20, pattern=r"^[A-Za-z0-9]+$")
 
@@ -71,6 +75,22 @@ class AdPlacementInput(BaseModel):
 class GrowthAutomationUpdate(BaseModel):
     active: bool | None = None
     cooldown_hours: int | None = Field(default=None, ge=0, le=8760)
+
+
+class EngagementConfigUpdate(BaseModel):
+    rewarded_ads_enabled: bool
+    premium_offers_enabled: bool
+    content_notifications_enabled: bool
+    continue_watching_reminders_enabled: bool
+    coins_per_ad: int = Field(ge=1, le=100)
+    daily_limit: int = Field(ge=1, le=25)
+    max_per_session: int = Field(ge=0, le=3)
+    max_per_day: int = Field(ge=0, le=5)
+    first_delay_seconds: int = Field(ge=30, le=3600)
+    repeat_delay_seconds: int = Field(ge=180, le=7200)
+    premium_notification_cooldown_hours: int = Field(ge=24, le=168)
+    continue_after_hours: int = Field(ge=6, le=168)
+    continue_cooldown_hours: int = Field(ge=12, le=336)
 
 
 class SocialClaims(BaseModel):

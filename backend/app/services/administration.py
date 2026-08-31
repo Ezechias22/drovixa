@@ -343,6 +343,7 @@ async def _eligible_user_ids(
     preference_field = {
         "new_episode": NotificationPreference.new_episodes,
         "new_series": NotificationPreference.new_episodes,
+        "new_movie": NotificationPreference.new_episodes,
         "promotion": NotificationPreference.promotions,
         "recommendation": NotificationPreference.recommendations,
         "wallet": NotificationPreference.wallet,

@@ -13,6 +13,9 @@ exchange, Watch Party rooms, and growth automations**.
 Phase 12 closes the planned implementation roadmap with guarded production
 release gates, signed-store-build controls, backup/restore drills, public smoke
 monitoring, incident/rollback runbooks, and legal/store-submission templates.
+Phase 13 adds server-verified Google AdMob rewarded ads, strict daily reward
+limits, respectful Premium prompts, automatic new-release notifications, and
+continue-watching reminders with direct deep links.
 
 ## Repository map
 
@@ -106,6 +109,11 @@ Phase 12 standardizes release `0.12.0`, prevents production mobile builds from
 using local or insecure API URLs, separates preview APKs from production AABs,
 adds confirmed CI/store gates, validates Neon backups, monitors the deployed
 surfaces, and documents the final legal, security, recovery, and store duties.
+
+Phase 13 standardizes release `0.13.0`. Ad rewards are credited only after a
+valid Google server-side verification callback, use idempotent ledger entries,
+and are disabled for Premium members. Admins can control coins, daily caps,
+offer frequency, publishing alerts, and viewing reminders from Growth.
 
 The registration route enforces `registration_enabled` on the server. Later
 modules must use the same dependency pattern so disabling a module removes its

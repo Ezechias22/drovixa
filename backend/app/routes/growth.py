@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Query, Request, status
+from fastapi.responses import PlainTextResponse
 
 from app.api.deps import CurrentContext, DbSession, OptionalContext, require_feature_enabled
 from app.core.network import forwarded_for
@@ -12,6 +13,7 @@ from app.schemas.growth import (
     AdEventInput,
     GrowthEventInput,
     ReferralApplyInput,
+    RewardedAdSessionInput,
     SocialLoginInput,
     WatchPartyCreateInput,
     WatchPartyJoinInput,
@@ -19,6 +21,11 @@ from app.schemas.growth import (
     WatchPartyStateInput,
 )
 from app.schemas.user import UserOut
+from app.services.engagement import (
+    complete_rewarded_ad_from_ssv,
+    create_rewarded_ad_session,
+    engagement_config,
+)
 from app.services.growth import (
     claim_daily_reward,
     create_watch_party,
@@ -43,6 +50,41 @@ router = APIRouter(tags=["Growth"])
 @router.get("/growth/config")
 async def public_growth_config() -> dict[str, Any]:
     return success(growth_config())
+
+
+@router.get("/engagement/config")
+async def viewer_engagement_config(
+    context: CurrentContext,
+    db: DbSession,
+    platform: str = Query(default="android", pattern="^(android|ios)$"),
+) -> dict[str, Any]:
+    return success(
+        await engagement_config(db, user_id=context.user.id, platform=platform)
+    )
+
+
+@router.post(
+    "/rewards/ads/session",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit("rewarded-ad-session", requests=20, window_seconds=3600))],
+)
+async def rewarded_ad_session(
+    payload: RewardedAdSessionInput, context: CurrentContext, db: DbSession
+) -> dict[str, Any]:
+    return success(
+        await create_rewarded_ad_session(
+            db,
+            user_id=context.user.id,
+            platform=payload.platform,
+        )
+    )
+
+
+@router.get("/webhooks/admob/reward", response_class=PlainTextResponse)
+async def admob_reward_callback(request: Request, db: DbSession) -> PlainTextResponse:
+    raw_query = request.scope.get("query_string", b"").decode("ascii")
+    await complete_rewarded_ad_from_ssv(db, raw_query=raw_query)
+    return PlainTextResponse("ok")
 
 
 @router.get(

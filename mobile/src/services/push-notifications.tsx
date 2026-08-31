@@ -17,10 +17,10 @@ Notifications.setNotificationHandler({
   }),
 });
 
-function safeRoute(value: unknown): Href | null {
+export function safeNotificationRoute(value: unknown): Href | null {
   if (typeof value !== 'string') return null;
   const path = value.startsWith('drovixa://') ? `/${value.slice('drovixa://'.length)}` : value;
-  const allowed = /^\/(notifications|coins|premium|series\/[^/]+|movie\/[^/]+|watch\/[^/]+)$/;
+  const allowed = /^\/(notifications|coins|premium|series\/[^/?#]+|movie\/[^/?#]+|watch\/[^/?#]+)(?:\?target=(episode|movie))?$/;
   return allowed.test(path) ? (path as Href) : null;
 }
 
@@ -72,7 +72,7 @@ export function PushNotificationsBridge() {
 
   useEffect(() => {
     function openNotification(notification: Notifications.Notification) {
-      const route = safeRoute(notification.request.content.data?.action_url);
+      const route = safeNotificationRoute(notification.request.content.data?.action_url);
       if (route) router.push(route);
     }
     const lastResponse = Notifications.getLastNotificationResponse();

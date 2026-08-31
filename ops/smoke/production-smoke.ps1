@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)][string]$ApiOrigin,
     [Parameter(Mandatory = $true)][string]$AppOrigin,
     [Parameter(Mandatory = $true)][string]$AdminOrigin,
-    [string]$ExpectedVersion = "0.12.0",
+    [string]$ExpectedVersion = "0.13.0",
     [int]$Attempts = 8
 )
 

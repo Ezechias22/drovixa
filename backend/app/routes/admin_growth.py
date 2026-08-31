@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.api.deps import DbSession, require_permission
 from app.core.exceptions import AppError
+from app.models.configuration import FeatureFlag, RemoteConfig
 from app.models.growth import (
     AdEvent,
     AdPlacement,
@@ -20,12 +21,54 @@ from app.models.growth import (
 )
 from app.models.user import User
 from app.schemas.common import success
-from app.schemas.growth import AdPlacementInput, GrowthAutomationUpdate
+from app.schemas.growth import AdPlacementInput, EngagementConfigUpdate, GrowthAutomationUpdate
 from app.services.audit import add_audit_log
+from app.services.configuration import invalidate_runtime_configuration
+from app.services.engagement import DEFAULT_PREMIUM_CONFIG, DEFAULT_REWARDED_CONFIG
 
 router = APIRouter(prefix="/admin/growth", tags=["Admin growth"])
 GrowthViewer = Annotated[User, require_permission("analytics.view")]
 GrowthManager = Annotated[User, require_permission("settings.manage")]
+
+ENGAGEMENT_FLAG_KEYS = (
+    "rewarded_ads_enabled",
+    "premium_offers_enabled",
+    "content_notifications_enabled",
+    "continue_watching_reminders_enabled",
+)
+
+
+async def engagement_admin_data(db: DbSession) -> dict[str, Any]:
+    flags = {
+        row.key: row.enabled
+        for row in await db.scalars(
+            select(FeatureFlag).where(FeatureFlag.key.in_(ENGAGEMENT_FLAG_KEYS))
+        )
+    }
+    config_rows = {
+        row.key: row.value
+        for row in await db.scalars(
+            select(RemoteConfig).where(
+                RemoteConfig.key.in_(("admob_rewarded", "premium_engagement"))
+            )
+        )
+    }
+    rewarded = {**DEFAULT_REWARDED_CONFIG, **config_rows.get("admob_rewarded", {})}
+    premium = {**DEFAULT_PREMIUM_CONFIG, **config_rows.get("premium_engagement", {})}
+    return {
+        **{key: bool(flags.get(key, False)) for key in ENGAGEMENT_FLAG_KEYS},
+        "coins_per_ad": int(rewarded["coins_per_ad"]),
+        "daily_limit": int(rewarded["daily_limit"]),
+        "max_per_session": int(premium["max_per_session"]),
+        "max_per_day": int(premium["max_per_day"]),
+        "first_delay_seconds": int(premium["first_delay_seconds"]),
+        "repeat_delay_seconds": int(premium["repeat_delay_seconds"]),
+        "premium_notification_cooldown_hours": int(
+            premium["notification_cooldown_hours"]
+        ),
+        "continue_after_hours": int(premium["continue_after_hours"]),
+        "continue_cooldown_hours": int(premium["continue_cooldown_hours"]),
+    }
 
 
 def ad_data(row: AdPlacement) -> dict[str, Any]:
@@ -80,6 +123,91 @@ async def growth_summary(_: GrowthViewer, db: DbSession) -> dict[str, Any]:
             "growth_events": await count(GrowthEvent),
         }
     )
+
+
+@router.get("/config")
+async def engagement_configuration(_: GrowthViewer, db: DbSession) -> dict[str, Any]:
+    return success(await engagement_admin_data(db))
+
+
+@router.patch("/config")
+async def update_engagement_configuration(
+    payload: EngagementConfigUpdate,
+    request: Request,
+    admin: GrowthManager,
+    db: DbSession,
+) -> dict[str, Any]:
+    old = await engagement_admin_data(db)
+    changes = payload.model_dump()
+    flags = list(
+        await db.scalars(
+            select(FeatureFlag)
+            .where(FeatureFlag.key.in_(ENGAGEMENT_FLAG_KEYS))
+            .with_for_update()
+        )
+    )
+    if len(flags) != len(ENGAGEMENT_FLAG_KEYS):
+        raise AppError(
+            "ENGAGEMENT_CONFIG_INCOMPLETE",
+            "Run the latest database migration before updating engagement settings.",
+            status_code=409,
+        )
+    for row in flags:
+        row.enabled = bool(changes[row.key])
+        row.rollout_percentage = 100
+
+    configs = {
+        row.key: row
+        for row in await db.scalars(
+            select(RemoteConfig)
+            .where(RemoteConfig.key.in_(("admob_rewarded", "premium_engagement")))
+            .with_for_update()
+        )
+    }
+    if set(configs) != {"admob_rewarded", "premium_engagement"}:
+        raise AppError(
+            "ENGAGEMENT_CONFIG_INCOMPLETE",
+            "Run the latest database migration before updating engagement settings.",
+            status_code=409,
+        )
+    configs["admob_rewarded"].value = {
+        "coins_per_ad": changes["coins_per_ad"],
+        "daily_limit": changes["daily_limit"],
+    }
+    configs["premium_engagement"].value = {
+        "max_per_session": changes["max_per_session"],
+        "max_per_day": changes["max_per_day"],
+        "first_delay_seconds": changes["first_delay_seconds"],
+        "repeat_delay_seconds": changes["repeat_delay_seconds"],
+        "notification_cooldown_hours": changes[
+            "premium_notification_cooldown_hours"
+        ],
+        "continue_after_hours": changes["continue_after_hours"],
+        "continue_cooldown_hours": changes["continue_cooldown_hours"],
+    }
+    premium_automation = await db.scalar(
+        select(GrowthAutomation)
+        .where(GrowthAutomation.key == "premium-offer-notification")
+        .with_for_update()
+    )
+    if premium_automation:
+        premium_automation.cooldown_hours = changes[
+            "premium_notification_cooldown_hours"
+        ]
+    new = await engagement_admin_data(db)
+    add_audit_log(
+        db,
+        admin=admin,
+        request=request,
+        action="growth.engagement_config.update",
+        entity_type="engagement_config",
+        entity_id="phase13",
+        old_value=jsonable_encoder(old),
+        new_value=jsonable_encoder(new),
+    )
+    await db.commit()
+    await invalidate_runtime_configuration()
+    return success(new)
 
 
 @router.get("/ads")

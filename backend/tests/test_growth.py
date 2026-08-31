@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.administration import NotificationCampaign
 from app.models.base import utcnow
-from app.models.configuration import FeatureFlag
+from app.models.configuration import FeatureFlag, RemoteConfig
 from app.models.content import Content, Series
 from app.models.enums import (
     ContentStatus,
@@ -16,8 +18,18 @@ from app.models.enums import (
     Orientation,
     SeriesStatus,
 )
-from app.models.growth import AdEvent, AdPlacement, DailyRewardClaim, Referral
+from app.models.growth import (
+    AdEvent,
+    AdPlacement,
+    DailyRewardClaim,
+    Referral,
+    RewardedAdSession,
+)
 from app.models.monetization import WalletLedger
+from app.services.engagement import (
+    complete_rewarded_ad_from_ssv,
+    queue_publication_notification,
+)
 
 
 async def enable_growth(db: AsyncSession) -> None:
@@ -62,6 +74,51 @@ async def published_series(db: AsyncSession) -> Content:
     )
     await db.commit()
     return row
+
+
+async def enable_engagement(db: AsyncSession) -> None:
+    db.add_all(
+        [
+            FeatureFlag(
+                key=key,
+                description=key,
+                enabled=True,
+                rollout_percentage=100,
+                rules={},
+            )
+            for key in (
+                "rewarded_ads_enabled",
+                "premium_offers_enabled",
+                "content_notifications_enabled",
+                "continue_watching_reminders_enabled",
+            )
+        ]
+    )
+    db.add_all(
+        [
+            RemoteConfig(
+                key="admob_rewarded",
+                value={"coins_per_ad": 10, "daily_limit": 2},
+                description="test",
+                is_public=False,
+            ),
+            RemoteConfig(
+                key="premium_engagement",
+                value={
+                    "max_per_session": 2,
+                    "max_per_day": 3,
+                    "first_delay_seconds": 90,
+                    "repeat_delay_seconds": 480,
+                    "notification_cooldown_hours": 72,
+                    "continue_after_hours": 24,
+                    "continue_cooldown_hours": 48,
+                },
+                description="test",
+                is_public=False,
+            ),
+        ]
+    )
+    await db.commit()
 
 
 async def test_daily_reward_is_idempotent(
@@ -151,6 +208,88 @@ async def test_signed_ad_delivery_only_rewards_once(
     assert second.json()["data"]["rewarded"] is False
     assert int(await db.scalar(select(func.count()).select_from(AdEvent)) or 0) == 1
     assert int(await db.scalar(select(func.count()).select_from(WalletLedger)) or 0) == 1
+
+
+async def test_admob_ssv_credits_exactly_once(
+    client: AsyncClient,
+    db: AsyncSession,
+    registered: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await enable_engagement(db)
+    monkeypatch.setattr(
+        "app.services.engagement._ad_unit_id", lambda platform: "test-rewarded-unit"
+    )
+    headers = {"Authorization": f"Bearer {registered['access_token']}"}
+    created = await client.post(
+        "/api/v1/rewards/ads/session",
+        headers=headers,
+        json={"platform": "android"},
+    )
+    assert created.status_code == 201, created.text
+    session = created.json()["data"]
+
+    async def verified(_: str) -> dict[str, str]:
+        return {
+            "custom_data": session["custom_data"],
+            "transaction_id": "google-transaction-001",
+            "user_id": session["user_id"],
+            "ad_unit": session["ad_unit_id"],
+            "reward_amount": "1",
+            "reward_item": "coins",
+            "timestamp": "1",
+        }
+
+    monkeypatch.setattr("app.services.engagement.verify_admob_signature", verified)
+    first = await complete_rewarded_ad_from_ssv(db, raw_query="signed")
+    second = await complete_rewarded_ad_from_ssv(db, raw_query="signed")
+    assert first == {"recorded": True, "credited": True, "reward_coins": 10}
+    assert second["duplicate"] is True
+    assert int(await db.scalar(select(func.count()).select_from(RewardedAdSession)) or 0) == 1
+    assert int(await db.scalar(select(func.count()).select_from(WalletLedger)) or 0) == 1
+
+
+async def test_published_content_notification_is_deduplicated(db: AsyncSession) -> None:
+    await enable_engagement(db)
+    content = await published_series(db)
+    first = await queue_publication_notification(db, content_id=content.id)
+    second = await queue_publication_notification(db, content_id=content.id)
+    await db.commit()
+    assert first is not None
+    assert second is not None
+    assert first.id == second.id
+    assert first.action_url == f"/series/{content.slug}"
+    assert int(await db.scalar(select(func.count()).select_from(NotificationCampaign)) or 0) == 1
+
+
+async def test_admin_controls_reward_and_engagement_limits(
+    client: AsyncClient,
+    db: AsyncSession,
+    admin_headers: dict[str, str],
+) -> None:
+    await enable_engagement(db)
+    response = await client.patch(
+        "/api/v1/admin/growth/config",
+        headers=admin_headers,
+        json={
+            "rewarded_ads_enabled": True,
+            "premium_offers_enabled": True,
+            "content_notifications_enabled": True,
+            "continue_watching_reminders_enabled": True,
+            "coins_per_ad": 10,
+            "daily_limit": 4,
+            "max_per_session": 1,
+            "max_per_day": 2,
+            "first_delay_seconds": 120,
+            "repeat_delay_seconds": 600,
+            "premium_notification_cooldown_hours": 96,
+            "continue_after_hours": 30,
+            "continue_cooldown_hours": 72,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["daily_limit"] == 4
+    assert response.json()["data"]["max_per_session"] == 1
 
 
 async def test_watch_party_host_membership_and_admin_summary(

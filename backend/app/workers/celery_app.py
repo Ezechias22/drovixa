@@ -23,7 +23,11 @@ celery_app.conf.update(
         "dispatch-scheduled-notification-campaigns": {
             "task": "notifications.dispatch_scheduled",
             "schedule": 60.0,
-        }
+        },
+        "run-viewer-engagement-automations": {
+            "task": "engagement.run",
+            "schedule": 3600.0,
+        },
     },
 )
 
@@ -35,13 +39,26 @@ def ping() -> str:
 
 async def _dispatch_scheduled() -> int:
     from app.core.database import SessionFactory, dispose_database
-    from app.services.notifications import dispatch_due_notification_campaigns
+    from app.services.administration import (
+        dispatch_notification_campaign,
+        scheduled_campaign_ids,
+    )
 
+    dispatched = 0
     try:
         async with SessionFactory() as db:
-            return await dispatch_due_notification_campaigns(db)
+            campaign_ids = await scheduled_campaign_ids(db)
+        for campaign_id in campaign_ids:
+            async with SessionFactory() as db:
+                campaign = await dispatch_notification_campaign(db, campaign_id=campaign_id)
+                if campaign.status == "queued":
+                    from app.services.notifications import deliver_campaign_push
+
+                    await deliver_campaign_push(db, campaign_id=campaign_id)
+                dispatched += 1
     finally:
         await dispose_database()
+    return dispatched
 
 
 @celery_app.task(name="notifications.dispatch_scheduled")  # type: ignore[untyped-decorator]
@@ -65,3 +82,19 @@ async def _deliver_campaign_push(campaign_id: str) -> dict[str, int]:
 @celery_app.task(name="notifications.deliver_campaign_push")  # type: ignore[untyped-decorator]
 def deliver_campaign_push_task(campaign_id: str) -> dict[str, int]:
     return asyncio.run(_deliver_campaign_push(campaign_id))
+
+
+async def _run_engagement() -> dict[str, int]:
+    from app.core.database import SessionFactory, dispose_database
+    from app.services.engagement import run_engagement_automations
+
+    try:
+        async with SessionFactory() as db:
+            return await run_engagement_automations(db)
+    finally:
+        await dispose_database()
+
+
+@celery_app.task(name="engagement.run")  # type: ignore[untyped-decorator]
+def run_engagement_automations_task() -> dict[str, int]:
+    return asyncio.run(_run_engagement())

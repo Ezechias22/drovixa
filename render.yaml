@@ -25,7 +25,7 @@ services:
       - key: SERVICE_ROLE
         value: api
       - key: RELEASE
-        value: drovixa@0.9.0
+        value: drovixa@0.13.0
       - key: DEBUG
         value: "false"
       - key: TRUST_PROXY_HEADERS
@@ -91,6 +91,12 @@ services:
         value: "false"
       - key: PUSH_BATCH_SIZE
         value: "500"
+      - key: ADMOB_ANDROID_REWARDED_AD_UNIT_ID
+        sync: false
+      - key: ADMOB_IOS_REWARDED_AD_UNIT_ID
+        sync: false
+      - key: ENGAGEMENT_AUTOMATION_ENABLED
+        value: "true"
       - key: PAYMENT_PROVIDER
         value: disabled
 
@@ -110,7 +116,7 @@ services:
       - key: SERVICE_ROLE
         value: worker
       - key: RELEASE
-        value: drovixa-worker@0.9.0
+        value: drovixa-worker@0.13.0
       - key: DEBUG
         value: "false"
       - key: TRUST_PROXY_HEADERS
@@ -156,6 +162,8 @@ services:
         value: "false"
       - key: PUSH_BATCH_SIZE
         value: "500"
+      - key: ENGAGEMENT_AUTOMATION_ENABLED
+        value: "true"
 
   - type: web
     name: drovixa-web
@@ -175,7 +183,7 @@ services:
       - key: NEXT_PUBLIC_API_URL
         value: /api/drovixa
       - key: RELEASE
-        value: drovixa-web@0.9.0
+        value: drovixa-web@0.13.0
 
   - type: web
     name: drovixa-admin
@@ -195,7 +203,7 @@ services:
       - key: ADMIN_COOKIE_SECURE
         value: "true"
       - key: RELEASE
-        value: drovixa-admin@0.9.0
+        value: drovixa-admin@0.13.0
 
 databases:
   - name: drovixa-postgres

@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     API_V1_PREFIX: str = "/api/v1"
     LOG_LEVEL: str = "INFO"
-    RELEASE: str = "drovixa@0.12.0"
+    RELEASE: str = "drovixa@0.13.0"
     BACKEND_CORS_ORIGINS: list[str] = Field(default_factory=list)
     TRUSTED_HOSTS: list[str] = Field(default_factory=lambda: ["localhost", "127.0.0.1"])
     TRUST_PROXY_HEADERS: bool = False
@@ -118,6 +118,14 @@ class Settings(BaseSettings):
     NOTIFICATION_DELIVERY_MODE: Literal["queue", "inline"] = "queue"
     SCHEDULED_NOTIFICATION_POLLING_ENABLED: bool = False
     SCHEDULED_NOTIFICATION_POLL_INTERVAL_SECONDS: int = Field(default=60, ge=30, le=3600)
+
+    ADMOB_ANDROID_REWARDED_AD_UNIT_ID: str | None = None
+    ADMOB_IOS_REWARDED_AD_UNIT_ID: str | None = None
+    ADMOB_SSV_PUBLIC_KEYS_URL: str = (
+        "https://www.gstatic.com/admob/reward/verifier-keys.json"
+    )
+    ADMOB_SSV_KEY_CACHE_SECONDS: int = Field(default=86_400, ge=300, le=604_800)
+    ENGAGEMENT_AUTOMATION_ENABLED: bool = True
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

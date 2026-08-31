@@ -85,6 +85,32 @@ class AdEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     event_type: Mapped[str] = mapped_column(String(30), index=True)
 
 
+class RewardedAdSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "rewarded_ad_sessions"
+    __table_args__ = (
+        CheckConstraint("reward_coins > 0", name="rewarded_ad_coins_positive"),
+        UniqueConstraint("session_token", name="uq_rewarded_ad_session_token"),
+        UniqueConstraint("admob_transaction_id", name="uq_rewarded_ad_transaction"),
+        Index("ix_rewarded_ad_user_created", "user_id", "created_at"),
+        Index("ix_rewarded_ad_status_expires", "status", "expires_at"),
+    )
+
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    session_token: Mapped[str] = mapped_column(String(96))
+    platform: Mapped[str] = mapped_column(String(20))
+    ad_unit_id: Mapped[str] = mapped_column(String(160))
+    reward_coins: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(30), default="pending", server_default="pending")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    admob_transaction_id: Mapped[str | None] = mapped_column(String(200))
+    credited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    verification_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
+
+
 class DailyRewardClaim(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "daily_reward_claims"
     __table_args__ = (

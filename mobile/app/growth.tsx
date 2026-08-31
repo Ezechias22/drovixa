@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Alert, Pressable, Share, StyleSheet, Text, TextInput, View, ScrollView } from 'react-native';
 
 import { applyReferral, claimDailyReward, getDailyReward, getReferralSummary } from '@/features/growth/api';
+import { RewardedAdCard } from '@/components/RewardedAdCard';
 import { colors } from '@/theme';
 
 function message(error: unknown) {
@@ -20,6 +21,7 @@ export default function GrowthScreen() {
 
   return <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
     <Text style={styles.eyebrow}>GROW WITH DROVIXA</Text><Text style={styles.title}>Rewards & referrals</Text>
+    <RewardedAdCard />
     <View style={styles.card}><Text style={styles.cardTitle}>Daily streak</Text><Text style={styles.muted}>{reward.data?.claimed_today ? `Day ${reward.data.claim?.streak_day} claimed · +${reward.data.claim?.coins} coins` : `Day ${reward.data?.next_streak_day ?? 1} gives ${reward.data?.next_coins ?? 5} coins`}</Text><View style={styles.calendar}>{(reward.data?.calendar ?? [5,5,10,10,15,20,50]).map((coins,index)=><View key={index} style={[styles.day,reward.data?.claim?.streak_day === index+1 && styles.dayActive]}><Text style={styles.dayLabel}>D{index+1}</Text><Text style={styles.dayCoins}>{coins}</Text></View>)}</View><Pressable disabled={reward.data?.claimed_today || claim.isPending} onPress={()=>claim.mutate()} style={[styles.button,(reward.data?.claimed_today||claim.isPending)&&styles.disabled]}><Text style={styles.buttonText}>{reward.data?.claimed_today?'Come back tomorrow':claim.isPending?'Claiming…':'Claim daily coins'}</Text></Pressable></View>
     <View style={styles.card}><Text style={styles.cardTitle}>Invite friends</Text><Text style={styles.code}>{referral.data?.code ?? 'Loading…'}</Text><Text style={styles.muted}>{referral.data?.invited ?? 0} friends · {referral.data?.earned_coins ?? 0} coins earned</Text><Pressable onPress={()=>referral.data&&Share.share({message:`Join me on Drovixa with code ${referral.data.code}: ${referral.data.share_url}`})} style={styles.outline}><Text style={styles.outlineText}>Share invite</Text></Pressable>{!referral.data?.applied?<View style={styles.apply}><TextInput autoCapitalize="characters" onChangeText={setCode} placeholder="Referral code" placeholderTextColor={colors.muted} style={styles.input} value={code}/><Pressable disabled={!code||apply.isPending} onPress={()=>apply.mutate()} style={styles.smallButton}><Text style={styles.buttonText}>Apply</Text></Pressable></View>:<Text style={styles.success}>✓ Referral already applied</Text>}</View>
   </ScrollView>;

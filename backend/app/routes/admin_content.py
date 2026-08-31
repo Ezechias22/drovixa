@@ -54,6 +54,7 @@ from app.services.content import (
     validate_episode_links,
     video_asset_data,
 )
+from app.services.engagement import queue_publication_notification
 
 router = APIRouter(prefix="/admin", tags=["Admin content"])
 Viewer = Annotated[User, require_permission("content.view")]
@@ -304,6 +305,7 @@ async def admin_publish_series(
     row = await get_series(db, series_id)
     old = snapshot(row)
     await publish_content(db, row)
+    await queue_publication_notification(db, content_id=row.id)
     new = snapshot(row)
     await _audit_commit(
         db,
@@ -402,6 +404,7 @@ async def admin_publish_movie(
     row = await get_movie(db, movie_id)
     old = snapshot(row)
     await publish_content(db, row)
+    await queue_publication_notification(db, content_id=row.id)
     new = snapshot(row)
     await _audit_commit(
         db,
@@ -662,6 +665,7 @@ async def admin_publish_episode(
     row = await get_entity(db, Episode, episode_id, label="episode")
     old = episode_data(row)
     await publish_episode(db, row)
+    await queue_publication_notification(db, episode_id=row.id)
     new = episode_data(row)
     await _audit_commit(
         db,

@@ -5,7 +5,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AutomaticAppUpdater } from '@/components/AutomaticAppUpdater';
+import { AdMobInitializer } from '@/components/AdMobInitializer';
 import { AnimatedDrovixaSplash } from '@/components/AnimatedDrovixaSplash';
+import { PremiumOfferBridge } from '@/components/PremiumOfferBridge';
 import { useI18n, useLanguageStore } from '@/i18n';
 import { useAuthStore } from '@/stores/auth-store';
 import { usePlaybackStore } from '@/stores/playback-store';
@@ -65,6 +67,8 @@ function RootLayout() {
       <QueryClientProvider client={client}>
         <PushNotificationsBridge />
         <AutomaticAppUpdater />
+        <AdMobInitializer />
+        <PremiumOfferBridge />
         <StatusBar style="light" />
         <Stack
           screenOptions={{
