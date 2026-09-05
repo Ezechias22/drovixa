@@ -1,11 +1,13 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Hls, { ErrorTypes } from 'hls.js';
 import { useEffect, useRef, useState } from 'react';
 
 import { useAuthStore } from '@/stores/auth-store';
+import { getEpisode } from '@/features/catalog/api';
+import { unlockEpisode } from '@/features/monetization/api';
 
 import {
   authorizePlayback,
@@ -19,6 +21,7 @@ type Props = { id: string; target: PlaybackTarget };
 type PlayerFailure = { title: string; detail: string };
 
 export function DrovixaWebPlayer({ id, target }: Props) {
+  const queryClient = useQueryClient();
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const syncInFlight = useRef(false);
@@ -40,6 +43,27 @@ export function DrovixaWebPlayer({ id, target }: Props) {
     enabled: Boolean(id && deviceId),
     retry: false,
     refetchInterval: (query) => playbackRefreshInterval(query.state.data),
+  });
+  const grantError = axios.isAxiosError(grant.error)
+    ? grant.error.response?.data?.error
+    : undefined;
+  const needsCoinUnlock = target === 'episode' && grantError?.code === 'CONTENT_LOCKED';
+  const lockedEpisode = useQuery({
+    queryKey: ['episode', id],
+    queryFn: () => getEpisode(id),
+    enabled: needsCoinUnlock,
+    retry: false,
+  });
+  const unlock = useMutation({
+    mutationFn: () => unlockEpisode(id),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['wallet'] }),
+        queryClient.invalidateQueries({ queryKey: ['episodes'] }),
+        queryClient.invalidateQueries({ queryKey: ['episode', id] }),
+      ]);
+      await grant.refetch();
+    },
   });
 
   useEffect(() => {
@@ -192,10 +216,40 @@ export function DrovixaWebPlayer({ id, target }: Props) {
   if (grant.isPending) {
     return <PlayerState title="Authorizing secure playback…" />;
   }
+  if (needsCoinUnlock) {
+    const unlockError = axios.isAxiosError(unlock.error)
+      ? unlock.error.response?.data?.error
+      : undefined;
+    return (
+      <div className="flex aspect-video w-full flex-col items-center justify-center rounded-2xl bg-[var(--card)] px-6 text-center">
+        <p className="text-lg font-semibold text-white">Unlock this episode</p>
+        <p className="mt-2 text-sm text-[var(--muted)]">
+          {lockedEpisode.data
+            ? `Use ${lockedEpisode.data.coin_price} coins to watch it permanently.`
+            : 'Loading the episode price…'}
+        </p>
+        {unlockError && (
+          <p className="mt-3 text-sm text-red-300">
+            {unlockError.code === 'INSUFFICIENT_COINS'
+              ? 'You do not have enough coins.'
+              : (unlockError.message ?? 'The episode could not be unlocked.')}
+          </p>
+        )}
+        <button
+          type="button"
+          className="mt-5 rounded-full bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!lockedEpisode.data || unlock.isPending}
+          onClick={() => unlock.mutate()}
+        >
+          {unlock.isPending
+            ? 'Unlocking…'
+            : `Unlock for ${lockedEpisode.data?.coin_price ?? '…'} coins`}
+        </button>
+      </div>
+    );
+  }
   if (grant.isError) {
-    const data = axios.isAxiosError(grant.error) ? grant.error.response?.data : null;
-    const message = data?.error?.message;
-    return <PlayerState title="Playback unavailable" detail={message ?? 'Please try again later.'} />;
+    return <PlayerState title="Playback unavailable" detail={grantError?.message ?? 'Please try again later.'} />;
   }
 
   return (

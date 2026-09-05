@@ -78,6 +78,15 @@ async def test_showcase_is_idempotent_localized_and_playable(
     assert episodes[1]["coin_price"] == 10
     assert episodes[1]["unlocked"] is False
 
+    episode_detail = await client.get(
+        f"/api/v1/episodes/{episodes[1]['id']}",
+        headers={"X-Drovixa-Language": "es"},
+    )
+    assert episode_detail.status_code == 200, episode_detail.text
+    assert episode_detail.json()["data"]["coin_price"] == 10
+    assert episode_detail.json()["data"]["unlocked"] is False
+    assert episode_detail.json()["data"]["title"].startswith("Episodio 2")
+
     playback = await client.post(
         f"/api/v1/playback/episodes/{episodes[0]['id']}/authorize",
         json={"client_device_id": "showcase-test-device"},

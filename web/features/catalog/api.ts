@@ -8,6 +8,7 @@ export async function searchContent(query: string) { return (await apiClient.get
 export async function getTrendingSearches() { return (await apiClient.get<ApiEnvelope<string[]>>('/search/trending')).data.data; }
 export async function getContentDetail(type: 'series' | 'movie', slug: string) { return (await apiClient.get<ApiEnvelope<ContentDetail>>(`/${type === 'series' ? 'series' : 'movies'}/${slug}`)).data.data; }
 export async function getEpisodes(seriesId: string) { return (await apiClient.get<ApiEnvelope<EpisodeData[]>>(`/series/${seriesId}/episodes`, { params: { limit: 100 } })).data.data; }
+export async function getEpisode(episodeId: string) { return (await apiClient.get<ApiEnvelope<EpisodeData>>(`/episodes/${episodeId}`)).data.data; }
 export async function getShorts() { return (await apiClient.get<ApiEnvelope<ShortData[]>>('/shorts', { params: { limit: 20 } })).data.data; }
 export async function getFavorites() { return (await apiClient.get<ApiEnvelope<ContentCardData[]>>('/favorites')).data.data; }
 export async function toggleFavorite(contentId: string, saved: boolean) { if (saved) await apiClient.delete(`/favorites/${contentId}`); else await apiClient.post(`/favorites/${contentId}`); }

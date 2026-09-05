@@ -161,6 +161,61 @@ async def series_episodes(
     return success(data, meta=page_meta(page, limit, total))
 
 
+@router.get("/episodes/{episode_id}")
+async def episode_detail(
+    episode_id: UUID,
+    context: OptionalContext,
+    db: DbSession,
+) -> dict[str, Any]:
+    now = utcnow()
+    row = await db.scalar(
+        select(Episode)
+        .join(Episode.series)
+        .join(Series.content)
+        .where(
+            Episode.id == episode_id,
+            Episode.deleted_at.is_(None),
+            Episode.status == ContentStatus.PUBLISHED,
+            or_(Episode.published_at.is_(None), Episode.published_at <= now),
+            Content.deleted_at.is_(None),
+            Content.status == ContentStatus.PUBLISHED,
+            Content.visibility == ContentVisibility.PUBLIC,
+            or_(Content.license_start.is_(None), Content.license_start <= now),
+            or_(Content.license_end.is_(None), Content.license_end >= now),
+        )
+    )
+    if row is None:
+        from app.core.exceptions import AppError
+
+        raise AppError("NOT_FOUND", "The episode was not found.", status_code=404)
+
+    entitled = bool(
+        context
+        and await db.scalar(
+            select(UserEntitlement.id).where(
+                UserEntitlement.user_id == context.user.id,
+                UserEntitlement.content_id == row.series_id,
+                or_(
+                    UserEntitlement.episode_id == row.id,
+                    UserEntitlement.episode_id.is_(None),
+                ),
+                or_(
+                    UserEntitlement.starts_at.is_(None),
+                    UserEntitlement.starts_at <= now,
+                ),
+                or_(
+                    UserEntitlement.is_permanent.is_(True),
+                    UserEntitlement.expires_at.is_(None),
+                    UserEntitlement.expires_at > now,
+                ),
+            )
+        )
+    )
+    data = episode_data(row, include_asset=False)
+    data["unlocked"] = row.access_type == EpisodeAccessType.FREE or entitled
+    return success(data)
+
+
 @router.get("/movies")
 async def movie_list(db: DbSession, page: Page = 1, limit: Limit = 20) -> dict[str, Any]:
     rows, total = await list_content(

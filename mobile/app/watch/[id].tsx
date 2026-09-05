@@ -6,12 +6,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CommentsPanel } from '@/features/community/CommentsPanel';
-import { getEpisodes, toggleFavorite } from '@/features/catalog/api';
+import { getEpisode, getEpisodes, toggleFavorite } from '@/features/catalog/api';
 import { getFeatureFlags } from '@/features/configuration/api';
 import { createWatchParty } from '@/features/growth/api';
 import { DrovixaVideoPlayer } from '@/features/player/DrovixaVideoPlayer';
 import { authorizePlayback, playbackRefreshInterval } from '@/features/player/api';
 import type { PlaybackTarget, SubtitleTrack } from '@/features/player/types';
+import { unlockEpisode } from '@/features/monetization/api';
 import { useI18n } from '@/i18n';
 import { getOrCreateDeviceId } from '@/services/device';
 import { downloadForOffline, type DownloadProgress } from '@/services/offline-downloads';
@@ -20,8 +21,16 @@ import { usePlaybackStore } from '@/stores/playback-store';
 import { useSubtitleStore } from '@/stores/subtitle-store';
 import { colors } from '@/theme';
 
+const unlockCopy = {
+  ht: { title: 'Debloke epizòd la', body: (price: number) => `Sa ap itilize ${price} coins nan kont ou.`, button: (price: number) => `Debloke pou ${price} coins`, loading: 'Ap debloke…', insufficient: 'Ou pa gen ase coins.', failed: 'Nou pa t kapab debloke epizòd la.' },
+  fr: { title: "Débloquer l'épisode", body: (price: number) => `${price} pièces seront utilisées sur votre compte.`, button: (price: number) => `Débloquer pour ${price} pièces`, loading: 'Déblocage…', insufficient: "Vous n'avez pas assez de pièces.", failed: "Impossible de débloquer l'épisode." },
+  'pt-BR': { title: 'Desbloquear episódio', body: (price: number) => `${price} moedas serão usadas da sua conta.`, button: (price: number) => `Desbloquear por ${price} moedas`, loading: 'Desbloqueando…', insufficient: 'Você não tem moedas suficientes.', failed: 'Não foi possível desbloquear o episódio.' },
+  es: { title: 'Desbloquear episodio', body: (price: number) => `Se usarán ${price} monedas de tu cuenta.`, button: (price: number) => `Desbloquear por ${price} monedas`, loading: 'Desbloqueando…', insufficient: 'No tienes suficientes monedas.', failed: 'No se pudo desbloquear el episodio.' },
+  en: { title: 'Unlock this episode', body: (price: number) => `This will use ${price} coins from your account.`, button: (price: number) => `Unlock for ${price} coins`, loading: 'Unlocking…', insufficient: 'You do not have enough coins.', failed: 'The episode could not be unlocked.' },
+} as const;
+
 export default function WatchScreen() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const params = useLocalSearchParams<{ id: string; type?: string; target?: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -46,6 +55,16 @@ export default function WatchScreen() {
     enabled: Boolean(params.id && deviceId),
     retry: false,
     refetchInterval: (query) => playbackRefreshInterval(query.state.data),
+  });
+  const grantError = axios.isAxiosError(grant.error)
+    ? grant.error.response?.data?.error
+    : undefined;
+  const needsCoinUnlock = target === 'episode' && grantError?.code === 'CONTENT_LOCKED';
+  const lockedEpisode = useQuery({
+    queryKey: ['episode', params.id],
+    queryFn: () => getEpisode(params.id),
+    enabled: needsCoinUnlock && Boolean(params.id),
+    retry: false,
   });
   const flags = useQuery({ queryKey: ['feature-flags'], queryFn: getFeatureFlags });
   const episodes = useQuery({
@@ -98,6 +117,26 @@ export default function WatchScreen() {
     onSuccess: (data) => router.push(`/watch-party/${data.invite_code}` as never),
     onError: (error) => Alert.alert('Watch Party', axios.isAxiosError(error) ? error.response?.data?.error?.message ?? 'Could not create party.' : 'Could not create party.'),
   });
+  const unlock = useMutation({
+    mutationFn: () => unlockEpisode(params.id),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['wallet'] }),
+        queryClient.invalidateQueries({ queryKey: ['episodes'] }),
+        queryClient.invalidateQueries({ queryKey: ['episode', params.id] }),
+      ]);
+      await grant.refetch();
+    },
+    onError: (error) => {
+      const apiError = axios.isAxiosError(error) ? error.response?.data?.error : undefined;
+      Alert.alert(
+        unlockCopy[language].title,
+        apiError?.code === 'INSUFFICIENT_COINS'
+          ? unlockCopy[language].insufficient
+          : (apiError?.message ?? unlockCopy[language].failed),
+      );
+    },
+  });
 
   const playEpisode = (id: string) => {
     setEpisodesOpen(false);
@@ -110,9 +149,48 @@ export default function WatchScreen() {
   };
 
   if (grant.isPending) return <View style={styles.center}><ActivityIndicator color={colors.accent} size="large" /><Text style={styles.secondary}>{t('player.authorizing')}</Text></View>;
+  if (needsCoinUnlock) {
+    const price = lockedEpisode.data?.coin_price;
+    const confirmUnlock = () => {
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+      if (price === undefined) return;
+      Alert.alert(
+        unlockCopy[language].title,
+        unlockCopy[language].body(price),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: unlockCopy[language].button(price), onPress: () => unlock.mutate() },
+        ],
+      );
+    };
+    return (
+      <View style={styles.center}>
+        <Ionicons color={colors.accent} name="lock-closed" size={36} />
+        <Text style={styles.title}>{unlockCopy[language].title}</Text>
+        <Text style={styles.secondary}>
+          {price === undefined ? t('common.loading') : unlockCopy[language].body(price)}
+        </Text>
+        <Pressable
+          disabled={price === undefined || unlock.isPending}
+          onPress={confirmUnlock}
+          style={[styles.unlockButton, (price === undefined || unlock.isPending) && styles.disabled]}
+        >
+          <Text style={styles.unlockButtonText}>
+            {unlock.isPending
+              ? unlockCopy[language].loading
+              : price === undefined
+                ? t('common.loading')
+                : unlockCopy[language].button(price)}
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
   if (grant.isError) {
-    const message = axios.isAxiosError(grant.error) ? grant.error.response?.data?.error?.message : null;
-    return <View style={styles.center}><Text style={styles.title}>{t('player.unavailable')}</Text><Text style={styles.secondary}>{message ?? t('player.tryLater')}</Text></View>;
+    return <View style={styles.center}><Text style={styles.title}>{t('player.unavailable')}</Text><Text style={styles.secondary}>{grantError?.message ?? t('player.tryLater')}</Text></View>;
   }
 
   const currentEpisode = episodes.data?.find((episode) => episode.id === params.id);
@@ -180,6 +258,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background }, content: { paddingBottom: 46 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 28, backgroundColor: colors.background },
   title: { color: colors.text, fontSize: 22, fontWeight: '800' }, secondary: { color: colors.muted, fontSize: 13 },
+  unlockButton: { marginTop: 10, minWidth: 210, alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderRadius: 99, backgroundColor: colors.accent }, unlockButtonText: { color: '#fff', fontWeight: '900' },
   copy: { gap: 4, paddingHorizontal: 18, paddingTop: 17 }, contentTitle: { color: colors.text, fontSize: 22, fontWeight: '900' }, episodeTitle: { color: colors.muted, fontSize: 14 },
   playerActions: { position: 'absolute', right: 9, bottom: 54, gap: 8, alignItems: 'center' }, playerActionsHorizontal: { left: 10, right: 10, top: 8, bottom: undefined, flexDirection: 'row', justifyContent: 'space-evenly' }, playerAction: { width: 58, alignItems: 'center', gap: 3 }, playerActionIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#05070BCC', borderWidth: 1, borderColor: '#FFFFFF30' }, playerActionLabel: { color: '#fff', fontSize: 8, fontWeight: '900', maxWidth: 58, textShadowColor: '#000', textShadowRadius: 4 }, disabled: { opacity: 0.55 },
   episodeSection: { marginHorizontal: 16, borderRadius: 22, overflow: 'hidden', backgroundColor: colors.card }, episodeToggle: { minHeight: 72, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18 }, episodeToggleTitle: { color: colors.text, fontSize: 19, fontWeight: '900' }, episodeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, padding: 14, paddingTop: 2 }, episodeCell: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: colors.cardSecondary }, episodeCellActive: { backgroundColor: colors.accent }, episodeNumber: { color: colors.text, fontWeight: '900' }, episodeNumberActive: { color: '#fff' },
