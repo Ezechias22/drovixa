@@ -38,7 +38,7 @@
     "react-hook-form": "7.85.0",
     "react-native": "0.86.2",
     "react-native-google-cast": "^4.9.1",
-    "react-native-google-mobile-ads": "^16.5.0",
+    "react-native-google-mobile-ads": "15.8.3",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-web": "~0.21.0",
