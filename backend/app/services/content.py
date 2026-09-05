@@ -10,6 +10,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
+from app.core.localization import localized_fields
 from app.models.base import utcnow
 from app.models.catalog import Actor, Country, CrewMember, Genre, Language, Tag
 from app.models.content import (
@@ -359,12 +360,22 @@ def language_data(row: Language | None) -> dict[str, Any] | None:
 
 
 def content_data(row: Content, *, detailed: bool = True) -> dict[str, Any]:
+    localized = localized_fields(
+        row.translations,
+        {
+            "title": row.title,
+            "short_description": row.short_description,
+            "description": row.description,
+            "seo_title": row.seo_title,
+            "seo_description": row.seo_description,
+        },
+    )
     data: dict[str, Any] = {
         "id": row.id,
         "type": row.type,
-        "title": row.title,
+        "title": localized["title"],
         "slug": row.slug,
-        "short_description": row.short_description,
+        "short_description": localized["short_description"],
         "poster_url": row.poster_url,
         "backdrop_url": row.backdrop_url,
         "release_date": row.release_date,
@@ -396,7 +407,7 @@ def content_data(row: Content, *, detailed: bool = True) -> dict[str, Any]:
     if detailed:
         data.update(
             original_title=row.original_title,
-            description=row.description,
+            description=localized["description"],
             trailer_url=row.trailer_url,
             country=country_data(row.country),
             original_language=language_data(row.original_language),
@@ -433,7 +444,10 @@ def content_data(row: Content, *, detailed: bool = True) -> dict[str, Any]:
             license_end=row.license_end,
             allowed_countries=row.allowed_countries,
             blocked_countries=row.blocked_countries,
-            seo={"title": row.seo_title, "description": row.seo_description},
+            seo={
+                "title": localized["seo_title"],
+                "description": localized["seo_description"],
+            },
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -477,13 +491,17 @@ def season_data(row: Season) -> dict[str, Any]:
 
 
 def episode_data(row: Episode, *, include_asset: bool = True) -> dict[str, Any]:
+    localized = localized_fields(
+        row.translations,
+        {"title": row.title, "description": row.description},
+    )
     data: dict[str, Any] = {
         "id": row.id,
         "series_id": row.series_id,
         "season_id": row.season_id,
         "episode_number": row.episode_number,
-        "title": row.title,
-        "description": row.description,
+        "title": localized["title"],
+        "description": localized["description"],
         "thumbnail_url": row.thumbnail_url,
         "duration_seconds": row.duration_seconds,
         "orientation": row.orientation,

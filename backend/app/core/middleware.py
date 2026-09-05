@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.config import get_settings
+from app.core.localization import reset_content_language, set_content_language
 from app.core.observability import metrics
 
 logger = logging.getLogger("drovixa.request")
@@ -41,6 +42,10 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             supplied_request_id if SAFE_REQUEST_ID.fullmatch(supplied_request_id) else str(uuid4())
         )
         request.state.request_id = request_id
+        language_token = set_content_language(
+            request.headers.get("X-Drovixa-Language")
+            or request.headers.get("Accept-Language")
+        )
         started = time.perf_counter()
         status_code = 500
         try:
@@ -49,6 +54,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             response.headers["X-Request-ID"] = request_id
             return response
         finally:
+            reset_content_language(language_token)
             duration_seconds = time.perf_counter() - started
             duration_ms = round(duration_seconds * 1000, 2)
             if get_settings().METRICS_ENABLED and not request.url.path.endswith("/metrics"):
@@ -74,7 +80,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = (
-            "cross-origin" if "/media/content/" in request.url.path else "same-site"
+            "cross-origin"
+            if "/media/content/" in request.url.path or "/demo-media/" in request.url.path
+            else "same-site"
         )
         response.headers["Content-Security-Policy"] = (
             API_DOCS_CSP if request.url.path in API_DOC_PATHS else STRICT_API_CSP

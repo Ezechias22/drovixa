@@ -325,6 +325,23 @@ async def deliver_campaign_push(db: AsyncSession, *, campaign_id: UUID) -> dict[
     return {"sent": successful, "failed": failed, "pending": pending}
 
 
+async def dispatch_due_notification_campaigns(db: AsyncSession) -> int:
+    """Dispatch due campaigns inline for the API polling fallback."""
+    from app.services.administration import (
+        dispatch_notification_campaign,
+        scheduled_campaign_ids,
+    )
+
+    campaign_ids = await scheduled_campaign_ids(db)
+    dispatched = 0
+    for campaign_id in campaign_ids:
+        campaign = await dispatch_notification_campaign(db, campaign_id=campaign_id)
+        if campaign.status == "queued":
+            await deliver_campaign_push(db, campaign_id=campaign_id)
+        dispatched += 1
+    return dispatched
+
+
 async def campaign_delivery_summary(db: AsyncSession, *, campaign_id: UUID) -> dict[str, Any]:
     campaign = await db.get(NotificationCampaign, campaign_id)
     if campaign is None:

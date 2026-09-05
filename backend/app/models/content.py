@@ -116,6 +116,10 @@ class Content(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     blocked_countries: Mapped[list[str]] = mapped_column(JSON, default=list)
     seo_title: Mapped[str | None] = mapped_column(String(240))
     seo_description: Mapped[str | None] = mapped_column(String(500))
+    translations: Mapped[dict[str, dict[str, str]]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
+    demo_batch: Mapped[str | None] = mapped_column(String(80), index=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     country: Mapped[Country | None] = relationship(lazy="selectin")
@@ -298,6 +302,9 @@ class Episode(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     episode_number: Mapped[int]
     title: Mapped[str] = mapped_column(String(240))
     description: Mapped[str | None] = mapped_column(Text)
+    translations: Mapped[dict[str, dict[str, str]]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
     thumbnail_url: Mapped[str | None] = mapped_column(String(2048))
     duration_seconds: Mapped[int | None]
     video_asset_id: Mapped[UUID | None] = mapped_column(

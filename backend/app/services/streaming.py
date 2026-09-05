@@ -14,8 +14,10 @@ from sqlalchemy.orm import joinedload, selectinload
 from app.api.deps import AuthContext
 from app.core.config import get_settings
 from app.core.exceptions import AppError
+from app.core.localization import localized_fields
 from app.core.network import client_ip
 from app.integrations.videos.base import VideoProvider
+from app.integrations.videos.factory import get_demo_video_provider
 from app.models.base import utcnow
 from app.models.configuration import FeatureFlag
 from app.models.content import Content, Episode, Movie, Series, Subtitle, VideoAsset
@@ -291,7 +293,10 @@ async def authorize_playback(
     )
     if asset.status != VideoStatus.READY:
         raise AppError("VIDEO_NOT_READY", "The video is still processing.", status_code=409)
-    if asset.provider != provider.name:
+    effective_provider = (
+        get_demo_video_provider() if asset.provider == "drovixa_demo" else provider
+    )
+    if asset.provider != effective_provider.name:
         raise AppError(
             "VIDEO_PROVIDER_UNAVAILABLE",
             "The provider for this video is unavailable.",
@@ -311,7 +316,7 @@ async def authorize_playback(
         device_id = None
         effective_client_device_id = client_device_id
     expires_at = utcnow() + timedelta(seconds=get_settings().VIDEO_PLAYBACK_TOKEN_TTL_SECONDS)
-    grant = await provider.create_signed_url(
+    grant = await effective_provider.create_signed_url(
         provider_asset_id=asset.provider_asset_id,
         playback_id=asset.playback_id,
         expires_at=expires_at,
@@ -325,7 +330,7 @@ async def authorize_playback(
         content_id=content.id,
         episode_id=episode.id if episode else None,
         video_asset_id=asset.id,
-        provider=provider.name,
+        provider=effective_provider.name,
         country_code=country,
         ip=_request_ip(request),
         expires_at=grant.expires_at,
@@ -388,6 +393,14 @@ async def authorize_playback(
         for subtitle in asset.subtitles
         if subtitle.deleted_at is None
     ]
+    localized_content_title = localized_fields(
+        content.translations, {"title": content.title}
+    )["title"]
+    localized_playback_title = (
+        localized_fields(episode.translations, {"title": episode.title})["title"]
+        if episode
+        else localized_content_title
+    )
     return {
         "playback_session_id": playback.id,
         "content_type": target_type,
@@ -405,8 +418,8 @@ async def authorize_playback(
             if asset.width and asset.height and asset.height > asset.width
             else "horizontal"
         ),
-        "title": episode.title if episode else content.title,
-        "content_title": content.title,
+        "title": localized_playback_title,
+        "content_title": localized_content_title,
         "poster_url": episode.thumbnail_url if episode else content.poster_url,
         "profile_id": profile.id if profile else None,
         "autoplay_next": profile.autoplay_next if profile else True,

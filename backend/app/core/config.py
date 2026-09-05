@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     VIDEO_PLAYBACK_TOKEN_TTL_SECONDS: int = Field(default=900, ge=60, le=86_400)
     VIDEO_WEBHOOK_TOLERANCE_SECONDS: int = Field(default=300, ge=30, le=3_600)
     VIDEO_ALLOWED_ORIGINS: list[str] = Field(default_factory=list)
+    DEMO_CATALOG_ENABLED: bool = False
+    DEMO_MEDIA_BASE_URL: str = "http://localhost:8000/api/v1/demo-media"
 
     MUX_TOKEN_ID: str | None = None
     MUX_TOKEN_SECRET: str | None = None

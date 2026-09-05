@@ -1,5 +1,6 @@
 import axios from 'axios';
 
+import { useLanguageStore } from '@/i18n';
 import { useAuthStore } from '@/stores/auth-store';
 import { useProfileStore } from '@/stores/profile-store';
 
@@ -14,6 +15,7 @@ export const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
+  config.headers['X-Drovixa-Language'] = useLanguageStore.getState().language;
   const accessToken = useAuthStore.getState().session?.accessToken;
   if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`;
   const profileId = useProfileStore.getState().activeProfile?.id;

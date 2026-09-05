@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
@@ -11,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.core.config import get_settings
@@ -91,10 +93,23 @@ def create_app() -> FastAPI:
         allow_origins=settings.BACKEND_CORS_ORIGINS,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-Drovixa-Language",
+            "X-Drovixa-Profile-ID",
+            "X-Request-ID",
+        ],
     )
     install_exception_handlers(app)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+    demo_media = Path(__file__).resolve().parent / "demo_media"
+    app.mount(
+        f"{settings.API_V1_PREFIX}/demo-media",
+        StaticFiles(directory=demo_media),
+        name="demo-media",
+    )
 
     @app.get(settings.API_V1_PREFIX, include_in_schema=False)
     async def api_root() -> dict[str, Any]:

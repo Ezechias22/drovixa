@@ -4,7 +4,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, delete, func, or_, select
+from sqlalchemy import String, case, cast, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -327,6 +327,7 @@ async def search_content(
         func.lower(func.coalesce(Content.original_title, "")).like(pattern),
         func.lower(func.coalesce(Content.short_description, "")).like(pattern),
         func.lower(func.coalesce(Content.description, "")).like(pattern),
+        func.lower(cast(Content.translations, String)).like(pattern),
         Content.genres.any(func.lower(Genre.name).like(pattern)),
         Content.tags.any(func.lower(Tag.name).like(pattern)),
         Content.actor_credits.any(ContentActor.actor.has(func.lower(Actor.name).like(pattern))),
@@ -383,7 +384,10 @@ async def search_suggestions(
                 select(Content)
                 .where(
                     *(await _viewer_conditions(db, context, profile_id)),
-                    func.lower(Content.title).like(pattern),
+                    or_(
+                        func.lower(Content.title).like(pattern),
+                        func.lower(cast(Content.translations, String)).like(pattern),
+                    ),
                 )
                 .order_by(Content.view_count.desc())
                 .limit(6)

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { ScrollView, StyleSheet, Text, Pressable, View } from 'react-native';
 
 import { languages, useI18n } from '@/i18n';
@@ -6,6 +7,11 @@ import { colors } from '@/theme';
 
 export default function LanguageScreen() {
   const { language, setLanguage, t } = useI18n();
+  const queryClient = useQueryClient();
+  const selectLanguage = async (code: typeof language) => {
+    await setLanguage(code);
+    await queryClient.invalidateQueries();
+  };
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{t('language.title')}</Text>
@@ -19,7 +25,7 @@ export default function LanguageScreen() {
               accessibilityRole="radio"
               accessibilityState={{ checked: selected }}
               key={item.code}
-              onPress={() => void setLanguage(item.code)}
+              onPress={() => void selectLanguage(item.code)}
               style={[styles.row, selected && styles.selected]}
             >
               <View style={styles.copy}>
