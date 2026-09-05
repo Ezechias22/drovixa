@@ -95,7 +95,7 @@ jobs:
           docker build -f web/Dockerfile -t drovixa-web:${{ inputs.version }} .
           docker build -f admin/Dockerfile -t drovixa-admin:${{ inputs.version }} .
       - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
       - name: Gate summary
         run: |
           echo "Drovixa ${{ inputs.version }} passed the source release gate." >> "$GITHUB_STEP_SUMMARY"
