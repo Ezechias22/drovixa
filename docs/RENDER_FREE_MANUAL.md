@@ -79,8 +79,8 @@ python -m app.scripts.start_api
 ```
 
 Kòmand sa a pa bezwen okenn guillemets oswa `sh -c`. Li aplike migrasyon yo,
-verifye premye kont administratè a, senkronize katalòg demo a dapre
-`DEMO_CATALOG_ENABLED`, epi li demare Uvicorn sou pò Render bay la.
+verifye premye kont administratè a, pibliye katalòg Drovixa Originals la,
+epi li demare Uvicorn sou pò Render bay la.
 
 Ajoute environment variables sa yo. Pran valè sekrè yo nan `.env` lokal la;
 pa poste yo sou GitHub.

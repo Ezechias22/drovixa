@@ -17,7 +17,9 @@ from app.core.exceptions import AppError
 from app.core.localization import localized_fields
 from app.core.network import client_ip
 from app.integrations.videos.base import VideoProvider
-from app.integrations.videos.factory import get_demo_video_provider
+from app.integrations.videos.factory import (
+    get_original_video_provider,
+)
 from app.models.base import utcnow
 from app.models.configuration import FeatureFlag
 from app.models.content import Content, Episode, Movie, Series, Subtitle, VideoAsset
@@ -293,9 +295,9 @@ async def authorize_playback(
     )
     if asset.status != VideoStatus.READY:
         raise AppError("VIDEO_NOT_READY", "The video is still processing.", status_code=409)
-    effective_provider = (
-        get_demo_video_provider() if asset.provider == "drovixa_demo" else provider
-    )
+    bundled_providers = {"drovixa_original": get_original_video_provider}
+    provider_factory = bundled_providers.get(asset.provider)
+    effective_provider = provider_factory() if provider_factory else provider
     if asset.provider != effective_provider.name:
         raise AppError(
             "VIDEO_PROVIDER_UNAVAILABLE",

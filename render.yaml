@@ -14,8 +14,8 @@ services:
     region: oregon
     dockerContext: .
     dockerfilePath: ./backend/Dockerfile
-    dockerCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers
-    preDeployCommand: alembic upgrade head && python -m app.scripts.demo_catalog sync
+    dockerCommand: python -m app.scripts.start_api
+    preDeployCommand: alembic upgrade head && python -m app.scripts.original_catalog sync
     initialDeployHook: python -m app.scripts.bootstrap_superuser
     healthCheckPath: /api/v1/health/ready
     autoDeployTrigger: checksPass
@@ -69,10 +69,10 @@ services:
         value: Drovixa Owner
       - key: VIDEO_PROVIDER
         value: mux
-      - key: DEMO_CATALOG_ENABLED
+      - key: ORIGINAL_CATALOG_ENABLED
         value: "true"
-      - key: DEMO_MEDIA_BASE_URL
-        value: https://drovixa-api-free.onrender.com/api/v1/demo-media
+      - key: ORIGINAL_MEDIA_BASE_URL
+        value: https://drovixa-api-free.onrender.com/api/v1/original-media
       - key: MUX_TOKEN_ID
         sync: false
       - key: MUX_TOKEN_SECRET

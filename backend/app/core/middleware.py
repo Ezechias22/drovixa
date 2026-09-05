@@ -81,7 +81,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = (
             "cross-origin"
-            if "/media/content/" in request.url.path or "/demo-media/" in request.url.path
+            if any(
+                media_path in request.url.path
+                for media_path in ("/media/content/", "/original-media/")
+            )
             else "same-site"
         )
         response.headers["Content-Security-Policy"] = (

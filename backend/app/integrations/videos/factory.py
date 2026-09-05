@@ -3,8 +3,8 @@ from functools import lru_cache
 from app.core.config import get_settings
 from app.integrations.videos.base import VideoProvider
 from app.integrations.videos.cloudflare import CloudflareStreamProvider
-from app.integrations.videos.demo import DemoVideoProvider
 from app.integrations.videos.mux import MuxVideoProvider
+from app.integrations.videos.original import OriginalVideoProvider
 
 
 @lru_cache
@@ -18,5 +18,5 @@ def get_video_provider() -> VideoProvider:
 
 
 @lru_cache
-def get_demo_video_provider() -> DemoVideoProvider:
-    return DemoVideoProvider(get_settings())
+def get_original_video_provider() -> OriginalVideoProvider:
+    return OriginalVideoProvider(get_settings())

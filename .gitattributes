@@ -19,4 +19,4 @@ Dockerfile text eol=lf
 *.zip binary
 *.dump binary
 *.mp3 binary
-backend/app/demo_media/video/**/*.ts binary
+backend/app/original_media/video/**/*.ts binary

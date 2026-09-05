@@ -17,8 +17,8 @@ def main() -> None:
         [sys.executable, "-m", "app.scripts.bootstrap_superuser_once"],
     )
     _run(
-        "synchronizing the showcase catalog",
-        [sys.executable, "-m", "app.scripts.demo_catalog", "sync"],
+        "publishing Drovixa Originals",
+        [sys.executable, "-m", "app.scripts.original_catalog", "sync"],
     )
 
     port = os.environ.get("PORT", "8000")

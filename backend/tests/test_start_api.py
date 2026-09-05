@@ -26,7 +26,7 @@ def test_start_api_runs_setup_before_uvicorn(monkeypatch) -> None:
     assert events[1][0] == "run"
     assert events[1][1][-1] == "app.scripts.bootstrap_superuser_once"
     assert events[2][0] == "run"
-    assert events[2][1][-2:] == ["app.scripts.demo_catalog", "sync"]
+    assert events[2][1][-2:] == ["app.scripts.original_catalog", "sync"]
     assert events[3] == (
         "exec",
         [

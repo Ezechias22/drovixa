@@ -104,11 +104,11 @@ def create_app() -> FastAPI:
     )
     install_exception_handlers(app)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
-    demo_media = Path(__file__).resolve().parent / "demo_media"
+    original_media = Path(__file__).resolve().parent / "original_media"
     app.mount(
-        f"{settings.API_V1_PREFIX}/demo-media",
-        StaticFiles(directory=demo_media),
-        name="demo-media",
+        f"{settings.API_V1_PREFIX}/original-media",
+        StaticFiles(directory=original_media),
+        name="original-media",
     )
 
     @app.get(settings.API_V1_PREFIX, include_in_schema=False)
