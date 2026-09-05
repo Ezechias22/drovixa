@@ -75,8 +75,12 @@ Chwazi `New` > `Web Service`, konekte repo
 Docker Command:
 
 ```sh
-sh -c 'alembic upgrade head && python -m app.scripts.bootstrap_superuser_once && exec uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --proxy-headers'
+python -m app.scripts.start_api
 ```
+
+Kòmand sa a pa bezwen okenn guillemets oswa `sh -c`. Li aplike migrasyon yo,
+verifye premye kont administratè a, senkronize katalòg demo a dapre
+`DEMO_CATALOG_ENABLED`, epi li demare Uvicorn sou pò Render bay la.
 
 Ajoute environment variables sa yo. Pran valè sekrè yo nan `.env` lokal la;
 pa poste yo sou GitHub.
