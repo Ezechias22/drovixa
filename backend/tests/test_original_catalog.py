@@ -4,14 +4,20 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.content import Content, Episode, VideoAsset
+from app.models.content import Content, Episode, Season, Series, VideoAsset
 from app.models.enums import (
     ContentStatus,
     ContentType,
     ContentVisibility,
     EpisodeAccessType,
+    LedgerStatus,
     Orientation,
+    SeriesStatus,
+    VideoStatus,
+    WalletTransactionType,
 )
+from app.models.monetization import EpisodeUnlock, WalletLedger
+from app.models.user import User
 from app.scripts.original_catalog import (
     LANGUAGES,
     ORIGINAL_PROVIDER,
@@ -25,7 +31,9 @@ from app.scripts.original_catalog import (
 async def test_original_replaces_showcase_and_is_idempotent(
     client: AsyncClient,
     db: AsyncSession,
+    registered: dict[str, object],
 ) -> None:
+    del registered
     former_showcase = Content(
         type=ContentType.SERIES,
         title="Former showcase",
@@ -37,15 +45,89 @@ async def test_original_replaces_showcase_and_is_idempotent(
         blocked_countries=[],
     )
     db.add(former_showcase)
+    await db.flush()
+    former_series = Series(
+        id=former_showcase.id,
+        content=former_showcase,
+        total_seasons=1,
+        total_episodes=1,
+        series_status=SeriesStatus.ONGOING,
+        orientation=Orientation.VERTICAL,
+    )
+    former_season = Season(
+        series=former_series,
+        season_number=1,
+        title="Former season",
+        status=ContentStatus.PUBLISHED,
+    )
+    former_asset = VideoAsset(
+        provider="drovixa_demo",
+        provider_asset_id="showcase-v1:former-showcase:1",
+        status=VideoStatus.READY,
+        playback_id="vertical-01",
+    )
+    former_episode = Episode(
+        series=former_series,
+        season=former_season,
+        episode_number=1,
+        title="Former episode",
+        video_asset=former_asset,
+        orientation=Orientation.VERTICAL,
+        access_type=EpisodeAccessType.COIN_UNLOCK,
+        coin_price=10,
+        status=ContentStatus.PUBLISHED,
+    )
+    db.add_all([former_series, former_season, former_asset, former_episode])
+    await db.flush()
+    user = await db.scalar(select(User).where(User.email == "viewer@example.com"))
+    assert user is not None
+    ledger = WalletLedger(
+        user_id=user.id,
+        type=WalletTransactionType.EPISODE_UNLOCK,
+        amount=-10,
+        balance_before=100,
+        balance_after=90,
+        coin_balance_before=100,
+        coin_balance_after=90,
+        bonus_balance_before=0,
+        bonus_balance_after=0,
+        reference=str(former_episode.id),
+        source="showcase-test",
+        status=LedgerStatus.COMPLETED,
+        idempotency_key="showcase-unlock-regression",
+        transaction_metadata={},
+    )
+    db.add(ledger)
+    await db.flush()
+    former_unlock = EpisodeUnlock(
+        user_id=user.id,
+        episode_id=former_episode.id,
+        ledger_transaction_id=ledger.id,
+        coin_price=10,
+    )
+    db.add(former_unlock)
     await db.commit()
     assert await sync_original_catalog(db) == 1
     assert await sync_original_catalog(db) == 1
     assert (
         await db.scalar(
-            select(func.count(Content.id)).where(Content.demo_batch == SHOWCASE_BATCH)
+            select(func.count(Content.id)).where(
+                Content.demo_batch == SHOWCASE_BATCH,
+                Content.deleted_at.is_(None),
+            )
         )
         == 0
     )
+    await db.refresh(former_showcase)
+    assert former_showcase.deleted_at is not None
+    assert former_showcase.status == ContentStatus.ARCHIVED
+    assert former_showcase.visibility == ContentVisibility.PRIVATE
+    await db.refresh(former_episode)
+    await db.refresh(former_asset)
+    assert former_episode.deleted_at is not None
+    assert former_asset.deleted_at is not None
+    assert await db.get(EpisodeUnlock, former_unlock.id) is not None
+    assert await db.get(WalletLedger, ledger.id) is not None
 
     content = await db.get(Content, stable_id("content", ORIGINAL_SLUG))
     assert content is not None

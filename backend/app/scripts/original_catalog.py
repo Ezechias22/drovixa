@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID, uuid5
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -168,7 +168,7 @@ async def remove_original_catalog(db: AsyncSession) -> int:
 
 
 async def remove_showcase_catalog(db: AsyncSession) -> int:
-    """Remove only the former generated showcase batch, never owner-created content."""
+    """Archive only the former showcase batch while preserving coin-ledger history."""
     content_ids = list(
         await db.scalars(select(Content.id).where(Content.demo_batch == SHOWCASE_BATCH))
     )
@@ -182,10 +182,42 @@ async def remove_showcase_catalog(db: AsyncSession) -> int:
             )
         )
     )
-    await db.execute(delete(Content).where(Content.id.in_(content_ids)))
-    await db.flush()
+    archived_at = utcnow()
+    await db.execute(
+        update(Episode)
+        .where(Episode.series_id.in_(content_ids))
+        .values(
+            status=ContentStatus.ARCHIVED,
+            deleted_at=archived_at,
+        )
+    )
+    await db.execute(
+        update(Season)
+        .where(Season.series_id.in_(content_ids))
+        .values(
+            status=ContentStatus.ARCHIVED,
+            deleted_at=archived_at,
+        )
+    )
     if asset_ids:
-        await db.execute(delete(VideoAsset).where(VideoAsset.id.in_(asset_ids)))
+        await db.execute(
+            update(VideoAsset)
+            .where(VideoAsset.id.in_(asset_ids))
+            .values(
+                status=VideoStatus.DELETED,
+                deleted_at=archived_at,
+            )
+        )
+    await db.execute(
+        update(Content)
+        .where(Content.id.in_(content_ids))
+        .values(
+            status=ContentStatus.ARCHIVED,
+            visibility=ContentVisibility.PRIVATE,
+            featured=False,
+            deleted_at=archived_at,
+        )
+    )
     return len(content_ids)
 
 
