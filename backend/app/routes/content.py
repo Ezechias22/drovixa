@@ -11,8 +11,15 @@ from app.models.base import utcnow
 from app.models.catalog import Actor
 from app.models.community import Like
 from app.models.content import Content, ContentActor, Episode, Series
-from app.models.enums import ContentStatus, ContentType, ContentVisibility, LikeTargetType
+from app.models.enums import (
+    ContentStatus,
+    ContentType,
+    ContentVisibility,
+    EpisodeAccessType,
+    LikeTargetType,
+)
 from app.models.experience import Favorite
+from app.models.streaming import UserEntitlement
 from app.schemas.common import success
 from app.services.catalog import catalog_snapshot
 from app.services.content import content_data, episode_data, get_content_by_slug, list_content
@@ -95,6 +102,7 @@ async def series_detail(slug: str, context: OptionalContext, db: DbSession) -> d
 @router.get("/series/{series_id}/episodes")
 async def series_episodes(
     series_id: UUID,
+    context: OptionalContext,
     db: DbSession,
     page: Page = 1,
     limit: Limit = 20,
@@ -132,10 +140,25 @@ async def series_episodes(
     rows = (
         await db.scalars(statement.order_by(ordering).offset((page - 1) * limit).limit(limit))
     ).all()
-    return success(
-        [episode_data(row, include_asset=False) for row in rows],
-        meta=page_meta(page, limit, total),
-    )
+    unlocked_episode_ids: set[UUID] = set()
+    if context and rows:
+        unlocked_episode_ids = set(
+            await db.scalars(
+                select(UserEntitlement.episode_id).where(
+                    UserEntitlement.user_id == context.user.id,
+                    UserEntitlement.episode_id.in_([row.id for row in rows]),
+                    UserEntitlement.is_permanent.is_(True),
+                )
+            )
+        )
+    data = []
+    for row in rows:
+        item = episode_data(row, include_asset=False)
+        item["unlocked"] = (
+            row.access_type == EpisodeAccessType.FREE or row.id in unlocked_episode_ids
+        )
+        data.append(item)
+    return success(data, meta=page_meta(page, limit, total))
 
 
 @router.get("/movies")

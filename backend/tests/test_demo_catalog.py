@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import Content, Episode, VideoAsset
-from app.models.enums import ContentStatus, ContentType, ContentVisibility
+from app.models.enums import ContentStatus, ContentType, ContentVisibility, EpisodeAccessType
 from app.scripts.demo_catalog import (
     DEMO_BATCH,
     LANGUAGES,
@@ -71,6 +71,12 @@ async def test_showcase_is_idempotent_localized_and_playable(
     ).json()["data"]
     assert len(episodes) == 2
     assert episodes[0]["title"].startswith("Épisode 1")
+    assert episodes[0]["access_type"] == EpisodeAccessType.FREE
+    assert episodes[0]["coin_price"] == 0
+    assert episodes[0]["unlocked"] is True
+    assert episodes[1]["access_type"] == EpisodeAccessType.COIN_UNLOCK
+    assert episodes[1]["coin_price"] == 10
+    assert episodes[1]["unlocked"] is False
 
     playback = await client.post(
         f"/api/v1/playback/episodes/{episodes[0]['id']}/authorize",

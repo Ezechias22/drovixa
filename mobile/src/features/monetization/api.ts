@@ -14,6 +14,23 @@ export async function getWallet() {
   return (await apiClient.get<ApiEnvelope<Wallet>>('/wallet')).data.data;
 }
 
+export async function unlockEpisode(episodeId: string) {
+  return (
+    await apiClient.post<
+      ApiEnvelope<{
+        episode_id: string;
+        unlocked: boolean;
+        already_unlocked: boolean;
+        wallet: Wallet;
+      }>
+    >(
+      `/episodes/${episodeId}/unlock`,
+      undefined,
+      { headers: { 'Idempotency-Key': Crypto.randomUUID() } },
+    )
+  ).data.data;
+}
+
 export async function getCoinPackages(platform: 'android' | 'ios') {
   return (
     await apiClient.get<ApiEnvelope<CoinPackage[]>>('/coins/packages', { params: { platform } })

@@ -1,9 +1,10 @@
 # Drovixa showcase catalog
 
 This release includes a removable demonstration catalog identified by the exact batch key
-`showcase-v1`. It contains 15 original fictional series, two free 12-second HLS demo episodes
-per series, and localized series and episode metadata in English, French, Brazilian Portuguese,
-Spanish, and Haitian Creole.
+`showcase-v1`. It contains 15 original fictional series and two 12-second HLS demo episodes
+per series. Episode 1 is free and episode 2 costs 10 coins, so the catalog demonstrates the
+complete reward-and-unlock journey. Series and episode metadata is localized in English,
+French, Brazilian Portuguese, Spanish, and Haitian Creole.
 
 The artwork and video clips in `backend/app/demo_media` were created specifically for this
 repository. They do not copy third-party movies, series, posters, trailers, or trademarks.

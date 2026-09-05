@@ -662,8 +662,12 @@ async def sync_demo_catalog(db: AsyncSession) -> int:
             episode.duration_seconds = 12
             episode.video_asset = asset
             episode.orientation = orientation
-            episode.access_type = EpisodeAccessType.FREE
-            episode.coin_price = 0
+            episode.access_type = (
+                EpisodeAccessType.FREE
+                if episode_number == 1
+                else EpisodeAccessType.COIN_UNLOCK
+            )
+            episode.coin_price = 0 if episode_number == 1 else 10
             episode.premium = False
             episode.published_at = now
             episode.status = ContentStatus.PUBLISHED

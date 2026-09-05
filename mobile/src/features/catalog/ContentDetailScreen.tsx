@@ -1,21 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
 import { useRouter } from 'expo-router';
-import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/ScreenStates';
 import { CommentsPanel } from '@/features/community/CommentsPanel';
 import { setLike } from '@/features/community/api';
 import { getFeatureFlags } from '@/features/configuration/api';
+import { unlockEpisode } from '@/features/monetization/api';
 import { RatingControl } from '@/features/personalization/RatingControl';
 import { useI18n } from '@/i18n';
 import { useAuthStore } from '@/stores/auth-store';
 import { colors } from '@/theme';
 
 import { getContentDetail, getEpisodes, toggleFavorite } from './api';
-import type { ContentDetail } from './types';
+import type { ContentDetail, EpisodeData } from './types';
+
+const coinCopy = {
+  ht: { coins: 'coins', title: 'Debloke epizòd la?', body: (price: number) => `Sa ap itilize ${price} coins nan kont ou.`, unlock: 'Debloke', insufficient: 'Ou pa gen ase coins. Gade yon piblisite oswa ajoute coins sou kont ou.', failed: 'Nou pa t kapab debloke epizòd la.', loading: 'Ap debloke…' },
+  fr: { coins: 'pièces', title: "Débloquer l'épisode ?", body: (price: number) => `${price} pièces seront utilisées.`, unlock: 'Débloquer', insufficient: "Vous n'avez pas assez de pièces. Regardez une publicité ou ajoutez des pièces.", failed: "Impossible de débloquer l'épisode.", loading: 'Déblocage…' },
+  'pt-BR': { coins: 'moedas', title: 'Desbloquear episódio?', body: (price: number) => `${price} moedas serão usadas.`, unlock: 'Desbloquear', insufficient: 'Você não tem moedas suficientes. Assista a um anúncio ou adicione moedas.', failed: 'Não foi possível desbloquear o episódio.', loading: 'Desbloqueando…' },
+  es: { coins: 'monedas', title: '¿Desbloquear episodio?', body: (price: number) => `Se usarán ${price} monedas.`, unlock: 'Desbloquear', insufficient: 'No tienes suficientes monedas. Mira un anuncio o añade monedas.', failed: 'No se pudo desbloquear el episodio.', loading: 'Desbloqueando…' },
+  en: { coins: 'coins', title: 'Unlock episode?', body: (price: number) => `This will use ${price} coins.`, unlock: 'Unlock', insufficient: 'You do not have enough coins. Watch an ad or add coins to your account.', failed: 'The episode could not be unlocked.', loading: 'Unlocking…' },
+} as const;
 
 export function ContentDetailScreen({ type, slug }: { type: 'series' | 'movie'; slug: string }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const router = useRouter();
   const queryClient = useQueryClient();
   const session = useAuthStore((state) => state.session);
@@ -52,6 +62,28 @@ export function ContentDetailScreen({ type, slug }: { type: 'series' | 'movie'; 
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: detailKey }),
   });
+  const unlock = useMutation({
+    mutationFn: unlockEpisode,
+    onSuccess: async (_, episodeId) => {
+      queryClient.setQueryData<EpisodeData[]>(
+        ['episodes', detail.data?.series_id],
+        (current) => current?.map((episode) => (
+          episode.id === episodeId ? { ...episode, unlocked: true } : episode
+        )),
+      );
+      await queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      router.push({ pathname: '/watch/[id]', params: { id: episodeId, target: 'episode' } });
+    },
+    onError: (error) => {
+      const apiError = axios.isAxiosError(error) ? error.response?.data?.error : undefined;
+      Alert.alert(
+        coinCopy[language].title,
+        apiError?.code === 'INSUFFICIENT_COINS'
+          ? coinCopy[language].insufficient
+          : (apiError?.message ?? coinCopy[language].failed),
+      );
+    },
+  });
 
   if (detail.isPending) return <LoadingState />;
   if (detail.isError) return <ErrorState retry={() => void detail.refetch()} />;
@@ -63,6 +95,25 @@ export function ContentDetailScreen({ type, slug }: { type: 'series' | 'movie'; 
     } else if (episodes.data?.[0]) {
       router.push({ pathname: '/watch/[id]', params: { id: episodes.data[0].id, target: 'episode' } });
     }
+  };
+  const openEpisode = (episode: EpisodeData) => {
+    const canUseCoins = ['coin_unlock', 'premium_or_coin'].includes(episode.access_type);
+    if (!canUseCoins || episode.unlocked) {
+      router.push({ pathname: '/watch/[id]', params: { id: episode.id, target: 'episode' } });
+      return;
+    }
+    if (!session) {
+      router.push('/login');
+      return;
+    }
+    Alert.alert(
+      coinCopy[language].title,
+      coinCopy[language].body(episode.coin_price),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: coinCopy[language].unlock, onPress: () => unlock.mutate(episode.id) },
+      ],
+    );
   };
 
   return (
@@ -91,9 +142,9 @@ export function ContentDetailScreen({ type, slug }: { type: 'series' | 'movie'; 
         {type === 'series' ? <View style={styles.section}>
           <Text style={styles.heading}>{t('content.episodes')}</Text>
           {episodes.isPending ? <LoadingState /> : episodes.data?.length ? episodes.data.map((episode) => (
-            <Pressable key={episode.id} onPress={() => router.push({ pathname: '/watch/[id]', params: { id: episode.id, target: 'episode' } })} style={styles.episode}>
-              <View><Text style={styles.episodeTitle}>{episode.episode_number}. {episode.title}</Text><Text style={styles.small}>{episode.duration_seconds ? `${Math.ceil(episode.duration_seconds / 60)} min` : episode.access_type}</Text></View>
-              <Text style={styles.episodePlay}>▶</Text>
+            <Pressable disabled={unlock.isPending} key={episode.id} onPress={() => openEpisode(episode)} style={[styles.episode, unlock.isPending && styles.disabled]}>
+              <View><Text style={styles.episodeTitle}>{episode.episode_number}. {episode.title}</Text><Text style={styles.small}>{['coin_unlock', 'premium_or_coin'].includes(episode.access_type) && !episode.unlocked ? `${episode.coin_price} ${coinCopy[language].coins}` : episode.duration_seconds ? `${Math.ceil(episode.duration_seconds / 60)} min` : episode.access_type}</Text></View>
+              <Text style={styles.episodePlay}>{unlock.isPending && unlock.variables === episode.id ? coinCopy[language].loading : ['coin_unlock', 'premium_or_coin'].includes(episode.access_type) && !episode.unlocked ? '🔒' : '▶'}</Text>
             </Pressable>
           )) : <EmptyState title={t('content.noEpisodes')} body={t('content.noEpisodesBody')} />}
         </View> : null}
@@ -110,5 +161,5 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, play: { minWidth: 130, flexGrow: 1, alignItems: 'center', padding: 15, borderRadius: 99, backgroundColor: colors.text }, playText: { color: colors.background, fontWeight: '900' },
   actionPill: { minWidth: 105, flexGrow: 1, alignItems: 'center', padding: 15, borderRadius: 99, backgroundColor: colors.card }, actionText: { color: colors.text, fontWeight: '900' }, likedText: { color: colors.accent },
   small: { color: colors.muted, lineHeight: 21 }, section: { gap: 12, marginTop: 10 }, heading: { color: colors.text, fontSize: 21, fontWeight: '900' },
-  episode: { minHeight: 68, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 16, backgroundColor: colors.card }, episodeTitle: { color: colors.text, fontWeight: '800', marginBottom: 5 }, episodePlay: { color: colors.accent, fontSize: 20 },
+  episode: { minHeight: 68, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 16, backgroundColor: colors.card }, episodeTitle: { color: colors.text, fontWeight: '800', marginBottom: 5 }, episodePlay: { color: colors.accent, fontSize: 14, fontWeight: '900' }, disabled: { opacity: 0.6 },
 });
